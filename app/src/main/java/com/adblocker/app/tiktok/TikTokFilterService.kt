@@ -81,16 +81,16 @@ class TikTokFilterService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val packageName = event?.packageName?.toString() ?: return
+        val eventPackageName = event?.packageName?.toString() ?: return
 
         // The overlay's own buttons are drawn in a window that belongs to this app, so
         // interacting with them (or the window just redrawing) can itself generate an
         // accessibility event tagged with this app's package - reacting to that as "the
         // user left TikTok" would hide the overlay out from under the tap that's still
         // landing on it. Never a real signal either way, so just ignore it.
-        if (packageName == this.packageName) return
+        if (eventPackageName == this.packageName) return
 
-        if (packageName !in settingsRepository.targetPackages) {
+        if (eventPackageName !in settingsRepository.targetPackages) {
             // Don't hide the instant a single event from some other package shows up -
             // system UI, a keyboard, a notification icon updating, etc. can all fire one
             // while TikTok is still genuinely in front. A real switch away from TikTok is
@@ -100,10 +100,26 @@ class TikTokFilterService : AccessibilityService() {
             mainHandler.postDelayed(hideOverlayRunnable, OVERLAY_HIDE_DELAY_MILLIS)
             return
         }
+
+        val root = rootInActiveWindow
+        // A real diagnostic log caught this: some OEM launchers' Recents/task-switcher
+        // screens report the underlying app's real package on the accessibility EVENT
+        // even while the actually-visible, actually-readable content is the launcher's
+        // own UI (a live preview/snapshot card of that app's last window) - the log
+        // showed dozens of filter evaluations against a full home-screen app-drawer dump
+        // (Clock, WhatsApp, ..., "Close all", "5.08 GB available") logged under a
+        // TikTok-tagged event, with the floating overlay shown the whole time. The
+        // event's own packageName lied; rootInActiveWindow's packageName - which
+        // reflects the window whose content is actually about to be read - is the more
+        // trustworthy signal here. If they disagree, this isn't really TikTok on screen,
+        // so treat it exactly like leaving the app: hide the overlay, evaluate nothing.
+        if (root == null || root.packageName?.toString() !in settingsRepository.targetPackages) {
+            mainHandler.postDelayed(hideOverlayRunnable, OVERLAY_HIDE_DELAY_MILLIS)
+            return
+        }
+
         mainHandler.removeCallbacks(hideOverlayRunnable)
         if (settingsRepository.isOverlayEnabled) overlayController.show() else overlayController.hide()
-
-        val root = rootInActiveWindow ?: return
 
         // In-flight Block/Download automations advance independent of the skip cooldown
         // below - they're triggered by a deliberate tap, not a per-video reaction, and

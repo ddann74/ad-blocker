@@ -130,6 +130,19 @@ is unverified until then — that's the one real open question for the new modul
   `FilterEngine.videoFingerprint()` (the video's full own text block: caption, stats,
   etc., not just the creator's name) as the dedup key instead — the same latent bug also
   existed in Subject Boost's auto-like dedup and was fixed there too.
+- **Overlay/filter running over other apps**: a real diagnostic log (9-minute capture,
+  381 filter evaluations) caught the TikTok overlay showing and the filter actively
+  evaluating text for ~11 seconds while the actual on-screen content was the phone's
+  home screen/app drawer/recents view (not TikTok) - confirmed by the exact text
+  collected (`Clock, WhatsApp, ..., TikTok, ..., Close all, 5.08 GB available`, a
+  RAM-cleaner/recents banner, not anything TikTok renders). Root cause: some OEM
+  launchers' Recents/task-switcher screens report the underlying app's real package on
+  the accessibility *event* even while the actually-visible content is the launcher's
+  own live-preview card of that app's last window - `onAccessibilityEvent` only ever
+  checked the event's claimed package, never cross-checked it against what
+  `rootInActiveWindow` itself actually belongs to. Fixed by also checking
+  `root.packageName` and treating a mismatch the same as leaving the app (hide overlay,
+  evaluate nothing) - the event's claim alone is no longer trusted on its own.
 - **Silent Block/Download failures**: neither button gave any on-screen feedback at all -
   a failed menu-tap automation (guessed button wording not matching the real TikTok
   build) looked identical to nothing happening. Added a `Toast` at every real outcome
