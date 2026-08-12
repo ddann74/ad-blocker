@@ -31,12 +31,16 @@ class TikTokFilterService : AccessibilityService() {
     private lateinit var actionCoordinator: TikTokActionCoordinator
     private lateinit var overlayController: OverlayController
     private var lastSkipMillis: Long = 0L
-    // Identifies whichever video the last skip acted on (see performSkipGesture's call
-    // site) - guards against skipping the same video more than once if TikTok's own
-    // transition to the next video takes longer than COOLDOWN_MILLIS, which the
-    // time-only cooldown alone can't detect.
-    private var lastSkippedVideoIdentity: String? = null
-    // Same dedup shape as lastSkippedVideoIdentity, but for Subject Boost's auto-like -
+    // Every video identity ever auto-skipped this session (see performSkipGesture's call
+    // site) - not just the most recent one. A single "last skipped" slot meant scrolling
+    // BACKWARD past that one video to an earlier ad/blocked-creator post (one already
+    // skipped once before, further back in the feed) looked "new" again and got
+    // re-skipped, yanking the feed forward out from under a deliberate manual scroll-back.
+    // Tracking the whole set means once a video's been skipped, revisiting it - forward or
+    // backward - never re-triggers a skip. Bounded so a long scrolling session can't grow
+    // this unboundedly.
+    private val skippedVideoIdentities = LinkedHashSet<String>()
+    // Same "remember the last one" dedup shape as before, but for Subject Boost's auto-like -
     // without it, a video that lingers on screen across multiple accessibility events
     // (normal - nothing here forces it to move on) would get an attempted like on every
     // single one of those events, not just once.
@@ -154,18 +158,25 @@ class TikTokFilterService : AccessibilityService() {
         }
         // A best-effort "which video is this" fingerprint - the creator's display name
         // when one can be found, same identity FilterEngine.extractHandle already relies
-        // on elsewhere. If TikTok is still transitioning out the video we just skipped,
-        // this will still read as that same video rather than the next one, and skipping
-        // it again would be a duplicate, not a new decision.
+        // on elsewhere. Covers two cases: TikTok is still transitioning out the video we
+        // just skipped (would otherwise read as a "new" duplicate decision), AND the user
+        // has manually scrolled back to a video that was already skipped earlier in this
+        // session - either way, it's already been acted on once and shouldn't be yanked
+        // away again out from under a deliberate scroll-back.
         val videoIdentity = FilterEngine.extractHandle(texts) ?: texts.firstOrNull()
-        if (videoIdentity != null && videoIdentity == lastSkippedVideoIdentity) {
-            diagnosticLog.log("TIKTOK/FILTER", "duplicate skip suppressed for the same video (still transitioning?) - texts=$texts")
+        if (videoIdentity != null && videoIdentity in skippedVideoIdentities) {
+            diagnosticLog.log("TIKTOK/FILTER", "skip suppressed - this video was already skipped earlier (still transitioning, or you scrolled back to it) - texts=$texts")
             return
         }
         diagnosticLog.log("TIKTOK/FILTER", "${decision.reason} matched \"${decision.detail}\" - live=$isLive - texts=$texts")
 
         lastSkipMillis = now
-        lastSkippedVideoIdentity = videoIdentity
+        if (videoIdentity != null) {
+            skippedVideoIdentities.add(videoIdentity)
+            if (skippedVideoIdentities.size > MAX_TRACKED_SKIPPED_VIDEOS) {
+                skippedVideoIdentities.remove(skippedVideoIdentities.first())
+            }
+        }
         statsRepository.recordSkip(decision)
         performSkipGesture()
     }
@@ -279,5 +290,9 @@ class TikTokFilterService : AccessibilityService() {
         private const val SWIPE_DURATION_MILLIS = 250L
         private const val MAX_TREE_DEPTH = 60
         private const val OVERLAY_HIDE_DELAY_MILLIS = 800L
+        // Generous cap on how many skipped-video identities are remembered per session -
+        // large enough that no normal scrolling session would hit it, just a backstop
+        // against unbounded growth if TikTok is left open for a very long time.
+        private const val MAX_TRACKED_SKIPPED_VIDEOS = 500
     }
 }
