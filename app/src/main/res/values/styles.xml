@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="SectionHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textColor">#7c4dff</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:layout_marginTop">4dp</item>
+    </style>
+
+    <style name="SubsectionHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">#cccccc</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:layout_marginBottom">4dp</item>
+    </style>
+
+    <style name="HelperText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#888888</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+    </style>
+
+    <style name="ToggleRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:background">#2a2a2a</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+    </style>
+
+    <style name="ToggleLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="ToggleSwitch">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+    </style>
+
+    <style name="InputRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:layout_marginBottom">8dp</item>
+    </style>
+
+    <style name="RowInput">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textColorHint">#888888</item>
+        <item name="android:background">#2a2a2a</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:layout_marginEnd">8dp</item>
+    </style>
+
+    <style name="AddButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:text">@string/add</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:backgroundTint">#00c853</item>
+    </style>
+
+    <style name="ItemsContainer">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:layout_marginBottom">16dp</item>
+    </style>
+
+    <style name="StatBox">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textSize">12.5sp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:background">#2a2a2a</item>
+    </style>
+
+    <style name="StatBoxFull">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textSize">12.5sp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:background">#2a2a2a</item>
+        <item name="android:layout_marginBottom">4dp</item>
+    </style>
+
+    <style name="LogBox">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#cccccc</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:lineSpacingExtra">2dp</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:background">#2a2a2a</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+    </style>
+
+    <style name="DangerButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:textColor">#ffffff</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:backgroundTint">#ff1744</item>
+    </style>
+</resources>

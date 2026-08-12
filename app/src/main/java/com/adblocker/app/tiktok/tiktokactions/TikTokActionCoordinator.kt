@@ -1,0 +1,345 @@
+package com.adblocker.app.tiktok.tiktokactions
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.view.accessibility.AccessibilityNodeInfo
+import com.adblocker.app.diagnostics.DiagnosticLog
+import com.adblocker.app.tiktok.SettingsRepository
+import com.adblocker.app.tiktok.StatsRepository
+import com.adblocker.app.tiktok.media.AudioExtractor
+import com.adblocker.app.tiktok.media.DownloadedVideoLocator
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.Executors
+
+/** Which of the two things the Download button was asked for - see
+  * [TikTokActionCoordinator.startDownloadCurrentVideo]. Both start with the identical
+  * tap sequence (TikTok's own Save option); only what happens once that completes
+  * differs. */
+enum class DownloadMode { VIDEO_ONLY, AUDIO_ONLY }
+
+/**
+ * Owns the two multi-tap TikTok automations (real Block, and Download-then-extract-audio):
+ * advancing each one's [ActionSequence] by searching the accessibility tree for its
+ * current stage's keywords and tapping whatever matches, one stage per screen update,
+ * until it completes or times out. TikTokFilterService just forwards events here; this
+ * is where the actual "how do we interact with TikTok's real UI" logic lives, kept
+ * separate so the service itself stays readable.
+ *
+ * Every outcome - success, timeout, "couldn't find it" - is written to the activity
+ * log via [StatsRepository], since these are heuristic automations over TikTok's real
+ * UI and need to be auditable if they ever stop working after a TikTok update. [diagnosticLog]
+ * additionally records the per-stage detail (which keywords were searched, whether a
+ * node was found) that [StatsRepository]'s user-facing log deliberately leaves out.
+ */
+class TikTokActionCoordinator(
+    private val context: Context,
+    private val settingsRepository: SettingsRepository,
+    private val statsRepository: StatsRepository,
+    private val diagnosticLog: DiagnosticLog
+) {
+    private var pendingBlock: ActionSequence? = null
+    private var pendingDownload: ActionSequence? = null
+    private var pendingDownloadMode: DownloadMode = DownloadMode.AUDIO_ONLY
+    private var downloadTriggeredAtEpochSeconds: Long = 0L
+    // True from the moment an Audio download starts until its MediaStore locate loop
+    // either finds a file and finishes extracting (success or failure) or gives up -
+    // deliberately a SEPARATE, longer-lived flag from pendingDownload/hasPendingAction,
+    // which only covers the quick on-screen tap sequence. locateAndExtractAudio's poll
+    // can run for up to ~30s well after pendingDownload has already gone back to null -
+    // see startDownloadCurrentVideo's doc for why a second download during that window
+    // is rejected rather than allowed to race it.
+    private var isAudioExtractionInFlight: Boolean = false
+
+    /** True while a Block or Download tap sequence is still in progress - the caller
+      * (TikTokFilterService) uses this to suspend the unrelated auto-skip checks (ad,
+      * blocked creator) and Subject Boost's auto-like for as long as one is pending.
+      * These were never meant to run concurrently on the same video: auto-skip swiping
+      * away (or Subject Boost tapping Like) mid-sequence would pull the video out from
+      * under a multi-tap automation that's still working on it, corrupting it - the
+      * two-stage Download sequence could end up tapping "Save" on whatever video the
+      * feed had since moved to, not the one it actually started on. */
+    val hasPendingAction: Boolean get() = pendingBlock != null || pendingDownload != null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val backgroundExecutor = Executors.newSingleThreadExecutor()
+
+    /** Always adds [handle] to the local blocklist immediately, then - if enabled -
+      * kicks off the real-TikTok-block tap sequence too. The local list never depends
+      * on the automation succeeding. [isLive] picks which tap sequence to use - a Live
+      * room's menu is opened from a different place than a normal video's (see
+      * SettingsRepository.liveBlockActionStages). */
+    fun startBlockCurrentCreator(handle: String, isLive: Boolean = false) {
+        settingsRepository.addBlockedCreator(handle)
+        statsRepository.recordEvent("Added $handle to local blocklist")
+        diagnosticLog.log("TIKTOK/BLOCK", "$handle added to local blocklist (live=$isLive)")
+        if (!settingsRepository.isRealBlockAutomationEnabled) {
+            diagnosticLog.log("TIKTOK/BLOCK", "real block automation disabled in settings, stopping here")
+            return
+        }
+        val stages = if (isLive) settingsRepository.liveBlockActionStages() else settingsRepository.blockActionStages()
+        pendingBlock = ActionSequence(stages, System.currentTimeMillis())
+        statsRepository.recordEvent("Attempting to block $handle in TikTok directly...")
+        diagnosticLog.log("TIKTOK/BLOCK", "sequence started for $handle (live=$isLive), stages=$stages")
+    }
+
+    /** No-op (with a clear log/activity entry) if [isLive] - a Live broadcast has no
+      * saved video file for TikTok's own Save option to act on, so there's nothing here
+      * to download; starting the tap sequence anyway would just stall out on a 4-second
+      * timeout searching for a "Save video" option that was never going to appear.
+      *
+      * [mode] controls what happens once TikTok's Save tap sequence completes - both
+      * modes trigger the identical tap sequence (there's no separate "video-only" button
+      * inside TikTok itself), they only differ in what this app does afterward:
+      * [DownloadMode.VIDEO_ONLY] stops there (the video is already in the device's media
+      * library, same as if you'd tapped Save yourself); [DownloadMode.AUDIO_ONLY] also
+      * locates that file and extracts its audio track. Either way the video itself stays
+      * in the media library - this never deletes anything TikTok saved. */
+    fun startDownloadCurrentVideo(mode: DownloadMode, isLive: Boolean = false) {
+        if (isLive) {
+            statsRepository.recordEvent("Download isn't available on Live streams")
+            diagnosticLog.log("TIKTOK/DOWNLOAD", "skipped - current screen is a Live stream")
+            return
+        }
+        // A previous Audio download's MediaStore locate loop can still be running (up to
+        // ~30s - see locateAndExtractAudio) well after its own tap sequence finished.
+        // Starting a NEW Save now - Video or Audio, either one - writes another video
+        // into the exact same shared MediaStore that loop is polling, which matches on
+        // "most recently added" with no way to tell the two apart. Left unguarded, the
+        // still-running loop could silently latch onto the WRONG video and report a
+        // convincing-looking success for the wrong file's audio, rather than failing
+        // loudly - worse than just being slow. Rejecting outright here is safer.
+        if (isAudioExtractionInFlight) {
+            statsRepository.recordEvent("An audio extraction from a previous Download is still locating its file - wait for it to finish before starting another")
+            diagnosticLog.log("TIKTOK/DOWNLOAD", "rejected - previous audio extraction still in flight")
+            return
+        }
+        pendingDownload = ActionSequence(settingsRepository.downloadActionStages(), System.currentTimeMillis())
+        pendingDownloadMode = mode
+        downloadTriggeredAtEpochSeconds = System.currentTimeMillis() / 1000
+        if (mode == DownloadMode.AUDIO_ONLY) {
+            isAudioExtractionInFlight = true
+        }
+        val label = if (mode == DownloadMode.AUDIO_ONLY) "the current video (audio will be extracted)" else "the current video"
+        statsRepository.recordEvent("Attempting to download $label...")
+        diagnosticLog.log("TIKTOK/DOWNLOAD", "sequence started, mode=$mode, stages=${settingsRepository.downloadActionStages()}")
+    }
+
+    /** Subject Boost's positive signal: a single, immediate tap on TikTok's own Like
+      * button (see SettingsRepository.likeOptionKeywords), reusing the exact same
+      * find-by-keyword-and-click mechanism the Block/Download sequences use. Unlike
+      * those, this is one shot - not an [ActionSequence] - since liking a video is a
+      * single tap with no menu/confirm steps. Deliberately does not check or avoid an
+      * already-liked video: [findAndClickNode] matches on text/contentDescription
+      * containing "Like", and TikTok's own toggle behavior means a second tap on an
+      * already-liked video would just unlike it - the caller (TikTokFilterService) is
+      * responsible for only calling this once per video via its own dedup, the same
+      * pattern already used for auto-skip. */
+    fun attemptLikeCurrentVideo(root: AccessibilityNodeInfo) {
+        val keywords = settingsRepository.likeOptionKeywords
+        val found = findAndClickNode(root, keywords)
+        diagnosticLog.log("TIKTOK/SUBJECT_BOOST", "auto-like attempt, keywords=$keywords - found=$found")
+        if (found) {
+            statsRepository.recordSubjectBoostLike()
+        } else {
+            diagnosticLog.log("TIKTOK/SUBJECT_BOOST", "couldn't find TikTok's Like button")
+        }
+    }
+
+    /** Call on every accessibility event for the target app while either automation
+      * is in flight - advances whichever sequence(s) are pending. A no-op the rest of
+      * the time (both are null), so this is cheap to call unconditionally. */
+    fun onScreenUpdated(root: AccessibilityNodeInfo) {
+        if (pendingBlock == null && pendingDownload == null) return
+        val now = System.currentTimeMillis()
+
+        pendingBlock = advance(
+            "TIKTOK/BLOCK", pendingBlock, root, now,
+            onComplete = { statsRepository.recordEvent("Blocked in TikTok directly") },
+            onTimeout = { statsRepository.recordEvent("Couldn't find TikTok's Block option - kept in local list only") }
+        )
+        pendingDownload = advance(
+            "TIKTOK/DOWNLOAD", pendingDownload, root, now,
+            onComplete = {
+                if (pendingDownloadMode == DownloadMode.VIDEO_ONLY) {
+                    statsRepository.recordEvent("Video saved via TikTok's own Save option")
+                    diagnosticLog.log("TIKTOK/DOWNLOAD", "video-only - done, no audio extraction requested")
+                } else {
+                    statsRepository.recordEvent("Download tapped - locating the saved file...")
+                    locateAndExtractAudio(downloadTriggeredAtEpochSeconds, attempt = 0)
+                }
+            },
+            onTimeout = {
+                statsRepository.recordEvent("Couldn't find a Download option for this video - it may not be enabled by the creator")
+                // Never reached the locate step at all - always safe to clear regardless
+                // of mode (a no-op if this was a Video-only download, which never sets it).
+                isAudioExtractionInFlight = false
+            }
+        )
+    }
+
+    private fun advance(
+        tag: String,
+        sequence: ActionSequence?,
+        root: AccessibilityNodeInfo,
+        nowMillis: Long,
+        onComplete: () -> Unit,
+        onTimeout: () -> Unit
+    ): ActionSequence? {
+        if (sequence == null) return null
+        if (sequence.hasTimedOut(nowMillis, ACTION_TIMEOUT_MILLIS)) {
+            diagnosticLog.log(tag, "stage ${sequence.stageIndex} timed out searching for ${sequence.currentStageKeywords}")
+            onTimeout()
+            return null
+        }
+        val found = findAndClickNode(root, sequence.currentStageKeywords)
+        diagnosticLog.log(tag, "stage ${sequence.stageIndex} searching ${sequence.currentStageKeywords} - found=$found")
+        if (!found) return sequence
+        val next = sequence.advance()
+        if (next.isComplete) {
+            diagnosticLog.log(tag, "sequence complete")
+            onComplete()
+            return null
+        }
+        return next
+    }
+
+    /** Depth-first search for a node whose text or contentDescription contains any of
+      * [keywords] (case-insensitive), clicking the first clickable node at or above
+      * it in the tree. Mirrors TikTokFilterService.collectText's traversal shape. */
+    private fun findAndClickNode(node: AccessibilityNodeInfo?, keywords: List<String>, depth: Int = 0): Boolean {
+        if (node == null || depth > MAX_TREE_DEPTH || keywords.isEmpty()) return false
+
+        val text = node.text?.toString().orEmpty()
+        val description = node.contentDescription?.toString().orEmpty()
+        val isMatch = keywords.any { keyword ->
+            keyword.isNotBlank() && (text.contains(keyword, ignoreCase = true) || description.contains(keyword, ignoreCase = true))
+        }
+        if (isMatch) {
+            val clickable = findClickableSelfOrAncestor(node)
+            if (clickable != null) {
+                clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                return true
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val clicked = findAndClickNode(child, keywords, depth + 1)
+            @Suppress("DEPRECATION")
+            child.recycle()
+            if (clicked) return true
+        }
+        return false
+    }
+
+    /** TikTok's clickable target is often an ancestor of the node that actually holds
+      * the matched text (an icon + label wrapped in one clickable row) - walks up a
+      * bounded number of hops looking for the first node Android considers clickable. */
+    private fun findClickableSelfOrAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current: AccessibilityNodeInfo? = node
+        var hops = 0
+        while (current != null) {
+            if (current.isClickable) return current
+            if (hops >= MAX_ANCESTOR_HOPS) return null
+            current = current.parent
+            hops++
+        }
+        return null
+    }
+
+    /** Polls MediaStore a few times with a short delay - the file TikTok's Save button
+      * writes doesn't necessarily exist the instant the tap registers - then hands off
+      * to a background thread for the actual extraction, since remuxing shouldn't run
+      * on whatever thread accessibility events arrive on. */
+    private fun locateAndExtractAudio(afterEpochSeconds: Long, attempt: Int) {
+        val located = DownloadedVideoLocator.findRecentlyAddedVideo(context, afterEpochSeconds)
+        // Elapsed-since-tap, not just the attempt index - the interval between attempts
+        // isn't always exactly LOCATE_RETRY_DELAY_MILLIS (a busy main thread handling
+        // TikTok's own events can delay a postDelayed callback), so the attempt count
+        // alone understates how long this has actually been waiting. Confirmed real:
+        // one gap ran ~4s against a nominal 1.5s delay.
+        val elapsedMillis = System.currentTimeMillis() - afterEpochSeconds * 1000
+        diagnosticLog.log("TIKTOK/EXTRACT", "locate attempt $attempt (after=$afterEpochSeconds, elapsed=${elapsedMillis}ms) -> ${located?.uri} (owner=${located?.ownerPackage})")
+        if (located == null) {
+            if (attempt >= MAX_LOCATE_ATTEMPTS) {
+                statsRepository.recordEvent("Downloaded video wasn't found in the media library - audio extraction skipped")
+                diagnosticLog.log("TIKTOK/EXTRACT", "gave up after $MAX_LOCATE_ATTEMPTS attempts (${elapsedMillis}ms) - the video may still show up in the media library later, just too late for auto-extraction")
+                isAudioExtractionInFlight = false
+                return
+            }
+            mainHandler.postDelayed({ locateAndExtractAudio(afterEpochSeconds, attempt + 1) }, LOCATE_RETRY_DELAY_MILLIS)
+            return
+        }
+        val uri = located.uri
+        // Not used to reject the match (see DownloadedVideoLocator's doc for why) - just
+        // a visible warning worth checking in the log, since a mismatch here is the
+        // clearest available sign the extraction below might target the wrong video
+        // (e.g. another app saved something into the shared media library in the same
+        // narrow window this was polling).
+        if (located.ownerPackage != null && located.ownerPackage !in settingsRepository.targetPackages) {
+            diagnosticLog.log("TIKTOK/EXTRACT", "WARNING: located video's owner package (${located.ownerPackage}) doesn't match configured target packages (${settingsRepository.targetPackages}) - this may be the wrong video")
+        }
+
+        backgroundExecutor.execute {
+            // getExternalFilesDir can return null if external storage isn't currently
+            // available (e.g. removed SD card on some devices) - internal storage is
+            // always available as a fallback, just not visible outside the app.
+            val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
+            val outputDir = File(baseDir, "ExtractedAudio").apply { mkdirs() }
+            val fileName = "tiktok_audio_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".m4a"
+            val outputFile = File(outputDir, fileName)
+
+            var extractionError: Exception? = null
+            val result = try {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                    AudioExtractor.extractAudioTrack(pfd.fileDescriptor, outputFile.absolutePath)
+                } ?: AudioExtractor.ExtractionResult(false, 0, 0, hadAudioTrack = false)
+            } catch (e: Exception) {
+                extractionError = e
+                AudioExtractor.ExtractionResult(false, 0, 0, hadAudioTrack = false)
+            }
+
+            mainHandler.post {
+                if (result.success) {
+                    statsRepository.recordAudioExtracted()
+                    val seconds = result.durationMillis / 1000.0
+                    statsRepository.recordEvent("Audio extracted (~%.1fs, %d samples) to Android/data/.../files/ExtractedAudio/%s".format(seconds, result.sampleCount, fileName))
+                    diagnosticLog.log("TIKTOK/EXTRACT", "success -> ${outputFile.absolutePath} (${outputFile.length()} bytes, ${result.sampleCount} samples, ~${seconds}s) - compare this duration against the source video's actual length to judge whether it's complete")
+                } else {
+                    outputFile.delete()
+                    statsRepository.recordEvent("Audio extraction failed - the video may not have an audio track TikTok saved, or wasn't downloaded")
+                    val error = extractionError
+                    if (error != null) {
+                        diagnosticLog.logError("TIKTOK/EXTRACT", "failed for $uri", error)
+                    } else if (result.hadAudioTrack) {
+                        diagnosticLog.log("TIKTOK/EXTRACT", "failed for $uri - an audio track was found but zero samples could be read from it")
+                    } else {
+                        diagnosticLog.log("TIKTOK/EXTRACT", "failed for $uri - no audio track found in the saved video")
+                    }
+                }
+                isAudioExtractionInFlight = false
+            }
+        }
+    }
+
+    companion object {
+        private const val ACTION_TIMEOUT_MILLIS = 4_000L
+        private const val MAX_TREE_DEPTH = 60
+        private const val MAX_ANCESTOR_HOPS = 6
+        // Confirmed via a real diagnostic log: MediaStore indexing the video TikTok's
+        // Save button just wrote can genuinely take 10+ seconds, not the "short delay"
+        // this was originally sized for - one real download only succeeded on the very
+        // last allowed attempt (the 6th, ~11s in), with one inter-attempt gap alone
+        // running ~4s (likely main-thread contention from TikTok's own scroll/
+        // accessibility events firing at the same time). Raised to a much more generous
+        // ~30s nominal budget - there's no cost to waiting longer here (a silent
+        // background poll, nothing user-facing blocks on it), so erring toward "wait
+        // longer" is strictly better than giving up early.
+        private const val MAX_LOCATE_ATTEMPTS = 20
+        private const val LOCATE_RETRY_DELAY_MILLIS = 1_500L
+    }
+}

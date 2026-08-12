@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AdBlocker Suite</string>
+
+    <string name="tiktok_service_label">AdBlocker Suite - TikTok Filter</string>
+    <string name="spotify_service_label">AdBlocker Suite - Spotify Ad Skip</string>
+    <string name="podcast_service_label">AdBlocker Suite - Podcast Skip</string>
+
+    <string name="tiktok_accessibility_service_description">Reads on-screen text while TikTok is open to detect ads and blocked creators, and swipes past them. Nothing is recorded or sent anywhere - matches stay on this device.</string>
+    <string name="spotify_accessibility_service_description">Reads on-screen text while Spotify is open to detect ads, and taps the existing Skip/Next control. Nothing is recorded or sent anywhere - matches stay on this device.</string>
+    <string name="podcast_accessibility_service_description">Shows a floating Skip button while Podcast Addict is open. Requires a separate Notification access grant to actually perform the skip via Android's media session controls.</string>
+
+    <string name="add">Add</string>
+    <string name="remove">Remove</string>
+</resources>

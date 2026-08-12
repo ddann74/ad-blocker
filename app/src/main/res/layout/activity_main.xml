@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="#1a1a1a">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:textSize="22sp"
+        android:textColor="#7c4dff"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="TikTok ad/creator filter + Spotify ad skip + Podcast Addict skip button, in one app."
+        android:textColor="#888888"
+        android:textSize="11sp"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Tab bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+
+        <Button
+            android:id="@+id/tabButtonTikTok"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="TikTok"
+            android:textAllCaps="false"
+            android:textSize="12sp"
+            android:textColor="#ffffff"
+            android:backgroundTint="#7c4dff"
+            android:layout_marginEnd="2dp" />
+
+        <Button
+            android:id="@+id/tabButtonSpotify"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="Spotify"
+            android:textAllCaps="false"
+            android:textSize="12sp"
+            android:textColor="#ffffff"
+            android:backgroundTint="#3a3a3a"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp" />
+
+        <Button
+            android:id="@+id/tabButtonPodcast"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="Podcast"
+            android:textAllCaps="false"
+            android:textSize="12sp"
+            android:textColor="#ffffff"
+            android:backgroundTint="#3a3a3a"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="2dp" />
+
+        <Button
+            android:id="@+id/tabButtonDiagnostics"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:text="Diagnostics"
+            android:textAllCaps="false"
+            android:textSize="11sp"
+            android:textColor="#ffffff"
+            android:backgroundTint="#3a3a3a"
+            android:layout_marginStart="2dp" />
+
+    </LinearLayout>
+
+    <!-- ===================== TikTok tab ===================== -->
+    <LinearLayout
+        android:id="@+id/tabTikTok"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tiktokStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Accessibility Service: checking..."
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:background="#2a2a2a"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/tiktokOpenAccessibilityButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Open Accessibility Settings"
+            android:textColor="#ffffff"
+            android:textAllCaps="false"
+            android:backgroundTint="#2979ff"
+            android:layout_marginBottom="20dp" />
+
+        <TextView style="@style/SectionHeader" android:text="Filters" />
+
+        <LinearLayout style="@style/ToggleRow">
+            <TextView style="@style/ToggleLabel" android:text="Skip ads" />
+            <Switch android:id="@+id/tiktokAdSkipSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+
+        <LinearLayout style="@style/ToggleRow" android:layout_marginBottom="20dp">
+            <TextView style="@style/ToggleLabel" android:text="Skip blocked creators" />
+            <Switch android:id="@+id/tiktokBlockedCreatorSkipSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+
+        <TextView style="@style/SectionHeader" android:text="Blocked Creators" />
+        <TextView style="@style/HelperText" android:text="Enter the creator's display name as shown on their profile (TikTok doesn't expose @usernames to accessibility services)." />
+
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokBlockedCreatorInput" style="@style/RowInput" android:hint="Display name" />
+            <Button android:id="@+id/tiktokAddBlockedCreatorButton" style="@style/AddButton" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="8dp">
+            <Button android:id="@+id/tiktokToggleSelectModeButton" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="Select" android:textColor="#ffffff" android:textAllCaps="false" android:textSize="12sp" android:backgroundTint="#2979ff" android:layout_marginEnd="4dp" />
+            <Button android:id="@+id/tiktokRemoveSelectedButton" android:layout_width="0dp" android:layout_height="42dp" android:layout_weight="1" android:text="Remove Selected" android:textColor="#ffffff" android:textAllCaps="false" android:textSize="12sp" android:backgroundTint="#ff1744" android:visibility="gone" android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/tiktokBlockedCreatorsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Ad Keywords" />
+        <TextView style="@style/HelperText" android:text="Matched against any on-screen text, case-insensitive." />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokAdKeywordInput" style="@style/RowInput" android:hint="Sponsored" />
+            <Button android:id="@+id/tiktokAddAdKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokAdKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Subject Boost" />
+        <TextView style="@style/HelperText" android:text="Never skips anything. When on, videos matching a subject below get auto-liked as a positive signal. HONEST LIMIT: can only nudge, not guarantee, what TikTok recommends next." />
+        <LinearLayout style="@style/ToggleRow">
+            <TextView style="@style/ToggleLabel" android:text="Auto-like videos about my subjects" />
+            <Switch android:id="@+id/tiktokSubjectFilterSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokSubjectKeywordInput" style="@style/RowInput" android:hint="history" />
+            <Button android:id="@+id/tiktokAddSubjectKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokSubjectKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SubsectionHeader" android:text="Like Button Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokLikeOptionKeywordInput" style="@style/RowInput" android:hint="Like" />
+            <Button android:id="@+id/tiktokAddLikeOptionKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokLikeOptionKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Target App Packages" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokTargetPackageInput" style="@style/RowInput" android:hint="com.zhiliaoapp.musically" />
+            <Button android:id="@+id/tiktokAddTargetPackageButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokTargetPackagesContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Real TikTok Integration" />
+        <TextView style="@style/HelperText" android:text="Automates real taps inside TikTok's own menus (block, save video) - more powerful, may need keyword tweaks below if TikTok changes wording." />
+        <LinearLayout style="@style/ToggleRow">
+            <TextView style="@style/ToggleLabel" android:text="Really block in TikTok (not just skip)" />
+            <Switch android:id="@+id/tiktokRealBlockSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+        <LinearLayout style="@style/ToggleRow" android:layout_marginBottom="16dp">
+            <TextView style="@style/ToggleLabel" android:text="Show floating Block/Download buttons" />
+            <Switch android:id="@+id/tiktokOverlaySwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+
+        <TextView style="@style/SubsectionHeader" android:text="More Options Button Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokMoreOptionsKeywordInput" style="@style/RowInput" android:hint="More options" />
+            <Button android:id="@+id/tiktokAddMoreOptionsKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokMoreOptionsKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SubsectionHeader" android:text="Block Menu Option Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokBlockOptionKeywordInput" style="@style/RowInput" android:hint="Block" />
+            <Button android:id="@+id/tiktokAddBlockOptionKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokBlockOptionKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SubsectionHeader" android:text="Block Confirm Dialog Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokBlockConfirmKeywordInput" style="@style/RowInput" android:hint="Block" />
+            <Button android:id="@+id/tiktokAddBlockConfirmKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokBlockConfirmKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SubsectionHeader" android:text="Download/Save Menu Option Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokDownloadOptionKeywordInput" style="@style/RowInput" android:hint="Save video" />
+            <Button android:id="@+id/tiktokAddDownloadOptionKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokDownloadOptionKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Live Streams" />
+        <LinearLayout style="@style/ToggleRow" android:layout_marginBottom="16dp">
+            <TextView style="@style/ToggleLabel" android:text="Skip Live streams from blocked creators" />
+            <Switch android:id="@+id/tiktokLiveStreamSkipSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+        <TextView style="@style/SubsectionHeader" android:text="Live Room Menu Entry Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/tiktokLiveMoreOptionsKeywordInput" style="@style/RowInput" android:hint="More" />
+            <Button android:id="@+id/tiktokAddLiveMoreOptionsKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/tiktokLiveMoreOptionsKeywordsContainer" style="@style/ItemsContainer" android:layout_marginBottom="20dp" />
+
+        <TextView style="@style/SectionHeader" android:text="Activity" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="8dp">
+            <TextView android:id="@+id/tiktokAdsSkippedText" style="@style/StatBox" android:text="Ads skipped: 0" android:layout_marginEnd="4dp" />
+            <TextView android:id="@+id/tiktokCreatorsSkippedText" style="@style/StatBox" android:text="Creators skipped: 0" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" />
+            <TextView android:id="@+id/tiktokAudioExtractedText" style="@style/StatBox" android:text="Audio saved: 0" android:layout_marginStart="4dp" />
+        </LinearLayout>
+        <TextView android:id="@+id/tiktokSubjectBoostLikesText" style="@style/StatBoxFull" android:text="Subject Boost auto-likes: 0" />
+        <TextView android:id="@+id/tiktokActivityLogText" style="@style/LogBox" android:text="No activity yet" />
+        <Button android:id="@+id/tiktokClearStatsButton" style="@style/DangerButton" android:text="Clear Activity &amp; Counters" android:layout_marginBottom="8dp" />
+
+    </LinearLayout>
+
+    <!-- ===================== Spotify tab ===================== -->
+    <LinearLayout
+        android:id="@+id/tabSpotify"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/spotifyStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Accessibility Service: checking..."
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:background="#2a2a2a"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/spotifyOpenAccessibilityButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Open Accessibility Settings"
+            android:textColor="#ffffff"
+            android:textAllCaps="false"
+            android:backgroundTint="#1DB954"
+            android:layout_marginBottom="20dp" />
+
+        <TextView style="@style/HelperText" android:text="Detects an ad and taps Skip/Next - the same control you already have. On Spotify Free that control is often disabled during ads by design; this app logs that honestly instead of pretending to succeed. The floating Download button taps Spotify's own real Premium 'Download for offline' toggle." android:layout_marginBottom="16dp" />
+
+        <LinearLayout style="@style/ToggleRow">
+            <TextView style="@style/ToggleLabel" android:text="Skip ads" />
+            <Switch android:id="@+id/spotifyAdSkipSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+        <LinearLayout style="@style/ToggleRow" android:layout_marginBottom="20dp">
+            <TextView style="@style/ToggleLabel" android:text="Show floating Download button" />
+            <Switch android:id="@+id/spotifyOverlaySwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+
+        <TextView style="@style/SectionHeader" android:text="Ad Keywords" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/spotifyAdKeywordInput" style="@style/RowInput" android:hint="Advertisement" />
+            <Button android:id="@+id/spotifyAddAdKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/spotifyAdKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Skip Control Labels" />
+        <TextView style="@style/HelperText" android:text="Candidate labels for the Skip/Next control, tried in order." />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/spotifySkipControlKeywordInput" style="@style/RowInput" android:hint="Skip" />
+            <Button android:id="@+id/spotifyAddSkipControlKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/spotifySkipControlKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Download Control Labels" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/spotifyDownloadControlKeywordInput" style="@style/RowInput" android:hint="Download" />
+            <Button android:id="@+id/spotifyAddDownloadControlKeywordButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/spotifyDownloadControlKeywordsContainer" style="@style/ItemsContainer" />
+
+        <TextView style="@style/SectionHeader" android:text="Target App Packages" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/spotifyTargetPackageInput" style="@style/RowInput" android:hint="com.spotify.music" />
+            <Button android:id="@+id/spotifyAddTargetPackageButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/spotifyTargetPackagesContainer" style="@style/ItemsContainer" android:layout_marginBottom="20dp" />
+
+        <TextView style="@style/SectionHeader" android:text="Activity" />
+        <TextView android:id="@+id/spotifyAdsDetectedText" style="@style/StatBoxFull" android:text="Ads detected: 0" />
+        <TextView android:id="@+id/spotifySkipTappedText" style="@style/StatBoxFull" android:text="Skip tapped: 0" />
+        <TextView android:id="@+id/spotifySkipBlockedText" style="@style/StatBoxFull" android:text="Skip blocked (disabled by Spotify): 0" />
+        <TextView android:id="@+id/spotifySkipControlNotFoundText" style="@style/StatBoxFull" android:text="Skip control not found: 0" />
+        <TextView android:id="@+id/spotifyDownloadTappedText" style="@style/StatBoxFull" android:text="Download tapped: 0" />
+        <TextView android:id="@+id/spotifyDownloadControlNotFoundText" style="@style/StatBoxFull" android:text="Download control not found: 0" />
+        <TextView android:id="@+id/spotifyActivityLogText" style="@style/LogBox" android:text="No activity yet" />
+        <Button android:id="@+id/spotifyClearStatsButton" style="@style/DangerButton" android:text="Clear Activity &amp; Counters" android:layout_marginBottom="8dp" />
+
+    </LinearLayout>
+
+    <!-- ===================== Podcast tab ===================== -->
+    <LinearLayout
+        android:id="@+id/tabPodcast"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView style="@style/HelperText" android:text="No automatic ad detection - podcast sponsor reads are baked into the audio with no on-screen signal to read. Instead: a floating button that skips forward a duration YOU set, matched to how long your podcast's ad reads actually run. Two separate grants are needed below." android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/podcastAccessibilityStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1. Accessibility Service: checking..."
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:background="#2a2a2a"
+            android:layout_marginBottom="8dp" />
+        <Button
+            android:id="@+id/podcastOpenAccessibilityButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Open Accessibility Settings"
+            android:textColor="#ffffff"
+            android:textAllCaps="false"
+            android:backgroundTint="#7c4dff"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/podcastNotificationStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="2. Notification access: checking..."
+            android:textColor="#ffffff"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:background="#2a2a2a"
+            android:layout_marginBottom="8dp" />
+        <TextView style="@style/HelperText" android:text="This is what actually lets the Skip button read Podcast Addict's playback position and seek - separate from the accessibility grant above." />
+        <Button
+            android:id="@+id/podcastOpenNotificationSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Open Notification Access Settings"
+            android:textColor="#ffffff"
+            android:textAllCaps="false"
+            android:backgroundTint="#7c4dff"
+            android:layout_marginBottom="20dp" />
+
+        <TextView style="@style/SectionHeader" android:text="Skip Button" />
+        <LinearLayout style="@style/ToggleRow">
+            <TextView style="@style/ToggleLabel" android:text="Show floating Skip button" />
+            <Switch android:id="@+id/podcastSkipButtonSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+
+        <TextView style="@style/SubsectionHeader" android:text="Skip duration (seconds)" />
+        <TextView style="@style/HelperText" android:text="Set this to match how long your podcast's ad reads typically run." />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/podcastSkipDurationInput" style="@style/RowInput" android:hint="30" android:inputType="number" />
+            <Button android:id="@+id/podcastSaveSkipDurationButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Save" android:textColor="#ffffff" android:textAllCaps="false" android:backgroundTint="#7c4dff" />
+        </LinearLayout>
+
+        <TextView style="@style/SectionHeader" android:text="Target App Packages" />
+        <LinearLayout style="@style/InputRow">
+            <EditText android:id="@+id/podcastTargetPackageInput" style="@style/RowInput" android:hint="com.bambuna.podcastaddict" />
+            <Button android:id="@+id/podcastAddTargetPackageButton" style="@style/AddButton" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/podcastTargetPackagesContainer" style="@style/ItemsContainer" android:layout_marginBottom="20dp" />
+
+        <TextView style="@style/SectionHeader" android:text="Activity" />
+        <TextView android:id="@+id/podcastSkipsPerformedText" style="@style/StatBoxFull" android:text="Skips performed: 0" />
+        <TextView android:id="@+id/podcastSkipsFailedText" style="@style/StatBoxFull" android:text="Skips failed: 0" />
+        <TextView android:id="@+id/podcastActivityLogText" style="@style/LogBox" android:text="No activity yet" />
+        <Button android:id="@+id/podcastClearStatsButton" style="@style/DangerButton" android:text="Clear Activity &amp; Counters" android:layout_marginBottom="8dp" />
+
+    </LinearLayout>
+
+    <!-- ===================== Diagnostics tab ===================== -->
+    <LinearLayout
+        android:id="@+id/tabDiagnostics"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView style="@style/HelperText" android:text="One shared log across all three modules (tagged TIKTOK/SPOTIFY/PODCAST), more verbose than each tab's own Activity feed - every screen evaluation, every automation stage, every error. Off by default; turn on when troubleshooting, then share or clear it." android:layout_marginBottom="12dp" />
+
+        <LinearLayout style="@style/ToggleRow" android:layout_marginBottom="8dp">
+            <TextView style="@style/ToggleLabel" android:text="Enable diagnostic logging (all modules)" />
+            <Switch android:id="@+id/diagnosticLoggingSwitch" style="@style/ToggleSwitch" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/diagnosticLogSizeText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Diagnostic log: 0.0 KB"
+            android:textColor="#cccccc"
+            android:textSize="12sp"
+            android:padding="10dp"
+            android:background="#2a2a2a"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/shareDiagnosticLogButton" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Share Diagnostic Log" android:textColor="#ffffff" android:textAllCaps="false" android:textSize="12.5sp" android:backgroundTint="#2979ff" android:layout_marginEnd="4dp" />
+            <Button android:id="@+id/clearDiagnosticLogButton" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Clear Diagnostic Log" android:textColor="#ffffff" android:textAllCaps="false" android:textSize="12.5sp" android:backgroundTint="#ff1744" android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>
+</ScrollView>
