@@ -125,6 +125,23 @@ object FilterEngine {
     fun normalizeHandle(handle: String): String =
         handle.trim().removePrefix("@").lowercase()
 
+    /** A fingerprint identifying the specific video currently on screen - deliberately
+      * NOT the same thing as [extractHandle], which only identifies the CREATOR. Using
+      * extractHandle alone as a "have I already skipped this?" dedup key was a real bug:
+      * every video from the same creator produces the identical extractHandle() result,
+      * so after the first video from a blocked creator was skipped, every OTHER video
+      * from that same creator was wrongly treated as "already skipped, leave it alone" -
+      * silently breaking blocking after one skip. This instead joins the current video's
+      * entire own text block (handle/name, caption, like/comment counts, etc.) - two
+      * different videos from the same creator have different captions/stats and so get
+      * different fingerprints, while genuinely revisiting the exact same video (scrolling
+      * back to it) still reads the same text and produces the same fingerprint. */
+    fun videoFingerprint(screenTexts: List<String>): String? {
+        val visibleVideoTexts = currentVideoTexts(screenTexts)
+        if (visibleVideoTexts.isEmpty()) return null
+        return visibleVideoTexts.joinToString("|")
+    }
+
     /** Whether the current screen looks like a TikTok Live room rather than a normal
       * FYP video - a plain substring match against [liveIndicatorKeywords] (default:
       * "LIVE", the badge TikTok renders on every live room), same heuristic shape as

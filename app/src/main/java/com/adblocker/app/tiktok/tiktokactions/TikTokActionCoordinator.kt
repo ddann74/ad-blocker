@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import com.adblocker.app.diagnostics.DiagnosticLog
 import com.adblocker.app.tiktok.SettingsRepository
 import com.adblocker.app.tiktok.StatsRepository
@@ -42,6 +43,10 @@ class TikTokActionCoordinator(
     private val diagnosticLog: DiagnosticLog
 ) {
     private var pendingBlock: ActionSequence? = null
+    // The handle the currently-pending block sequence is for - needed only so the
+    // eventual onComplete/onTimeout toast (fired well after startBlockCurrentCreator
+    // returns) can name who it was about.
+    private var pendingBlockHandle: String? = null
     private var pendingDownload: ActionSequence? = null
     private var pendingDownloadMode: DownloadMode = DownloadMode.AUDIO_ONLY
     private var downloadTriggeredAtEpochSeconds: Long = 0L
@@ -73,15 +78,23 @@ class TikTokActionCoordinator(
       * room's menu is opened from a different place than a normal video's (see
       * SettingsRepository.liveBlockActionStages). */
     fun startBlockCurrentCreator(handle: String, isLive: Boolean = false) {
+        // This part is unconditional and never depends on any menu-tap guesswork
+        // succeeding - it's what makes "block" actually permanent: every future video
+        // whose extracted handle matches this entry gets auto-skipped by
+        // TikTokFilterService/FilterEngine from now on, for as long as it stays on this
+        // list, independent of whether the real-TikTok-block automation below ever finds
+        // the right buttons on this device's TikTok build.
         settingsRepository.addBlockedCreator(handle)
         statsRepository.recordEvent("Added $handle to local blocklist")
         diagnosticLog.log("TIKTOK/BLOCK", "$handle added to local blocklist (live=$isLive)")
+        toast("Blocked $handle - future videos from them will be skipped")
         if (!settingsRepository.isRealBlockAutomationEnabled) {
             diagnosticLog.log("TIKTOK/BLOCK", "real block automation disabled in settings, stopping here")
             return
         }
         val stages = if (isLive) settingsRepository.liveBlockActionStages() else settingsRepository.blockActionStages()
         pendingBlock = ActionSequence(stages, System.currentTimeMillis())
+        pendingBlockHandle = handle
         statsRepository.recordEvent("Attempting to block $handle in TikTok directly...")
         diagnosticLog.log("TIKTOK/BLOCK", "sequence started for $handle (live=$isLive), stages=$stages")
     }
@@ -102,6 +115,7 @@ class TikTokActionCoordinator(
         if (isLive) {
             statsRepository.recordEvent("Download isn't available on Live streams")
             diagnosticLog.log("TIKTOK/DOWNLOAD", "skipped - current screen is a Live stream")
+            toast("Download isn't available on Live streams - no saved video file to grab")
             return
         }
         // A previous Audio download's MediaStore locate loop can still be running (up to
@@ -115,6 +129,7 @@ class TikTokActionCoordinator(
         if (isAudioExtractionInFlight) {
             statsRepository.recordEvent("An audio extraction from a previous Download is still locating its file - wait for it to finish before starting another")
             diagnosticLog.log("TIKTOK/DOWNLOAD", "rejected - previous audio extraction still in flight")
+            toast("Still processing a previous download - wait a moment before trying again")
             return
         }
         pendingDownload = ActionSequence(settingsRepository.downloadActionStages(), System.currentTimeMillis())
@@ -126,6 +141,10 @@ class TikTokActionCoordinator(
         val label = if (mode == DownloadMode.AUDIO_ONLY) "the current video (audio will be extracted)" else "the current video"
         statsRepository.recordEvent("Attempting to download $label...")
         diagnosticLog.log("TIKTOK/DOWNLOAD", "sequence started, mode=$mode, stages=${settingsRepository.downloadActionStages()}")
+        // Immediate ack that the tap registered - the actual outcome (found/not found,
+        // and for Audio, the extraction result) follows a few seconds later from
+        // onScreenUpdated/locateAndExtractAudio below, since it genuinely takes that long.
+        toast("Looking for TikTok's Save option...")
     }
 
     /** Subject Boost's positive signal: a single, immediate tap on TikTok's own Like
@@ -158,8 +177,18 @@ class TikTokActionCoordinator(
 
         pendingBlock = advance(
             "TIKTOK/BLOCK", pendingBlock, root, now,
-            onComplete = { statsRepository.recordEvent("Blocked in TikTok directly") },
-            onTimeout = { statsRepository.recordEvent("Couldn't find TikTok's Block option - kept in local list only") }
+            onComplete = {
+                statsRepository.recordEvent("Blocked in TikTok directly")
+                toast("Also blocked ${pendingBlockHandle ?: "this account"} directly in TikTok")
+            },
+            onTimeout = {
+                statsRepository.recordEvent("Couldn't find TikTok's Block option - kept in local list only")
+                toast(
+                    "${pendingBlockHandle ?: "This account"} is still blocked by this app (skipped from now on), " +
+                        "but couldn't find TikTok's own Block button - its menu wording may not match. " +
+                        "Edit Setup > More/Block Option Labels if this keeps happening."
+                )
+            }
         )
         pendingDownload = advance(
             "TIKTOK/DOWNLOAD", pendingDownload, root, now,
@@ -167,8 +196,10 @@ class TikTokActionCoordinator(
                 if (pendingDownloadMode == DownloadMode.VIDEO_ONLY) {
                     statsRepository.recordEvent("Video saved via TikTok's own Save option")
                     diagnosticLog.log("TIKTOK/DOWNLOAD", "video-only - done, no audio extraction requested")
+                    toast("Video saved via TikTok's own Save option")
                 } else {
                     statsRepository.recordEvent("Download tapped - locating the saved file...")
+                    toast("Save tapped - locating the file to extract audio...")
                     locateAndExtractAudio(downloadTriggeredAtEpochSeconds, attempt = 0)
                 }
             },
@@ -177,8 +208,16 @@ class TikTokActionCoordinator(
                 // Never reached the locate step at all - always safe to clear regardless
                 // of mode (a no-op if this was a Video-only download, which never sets it).
                 isAudioExtractionInFlight = false
+                toast(
+                    "Couldn't find TikTok's Save/Download option - either this creator disabled downloads, " +
+                        "or the menu wording doesn't match. Edit Setup > Download Option Labels, or check Diagnostics."
+                )
             }
         )
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
 
     private fun advance(
@@ -269,6 +308,7 @@ class TikTokActionCoordinator(
                 statsRepository.recordEvent("Downloaded video wasn't found in the media library - audio extraction skipped")
                 diagnosticLog.log("TIKTOK/EXTRACT", "gave up after $MAX_LOCATE_ATTEMPTS attempts (${elapsedMillis}ms) - the video may still show up in the media library later, just too late for auto-extraction")
                 isAudioExtractionInFlight = false
+                toast("Couldn't find the saved video in your media library - audio extraction gave up")
                 return
             }
             mainHandler.postDelayed({ locateAndExtractAudio(afterEpochSeconds, attempt + 1) }, LOCATE_RETRY_DELAY_MILLIS)
@@ -309,17 +349,26 @@ class TikTokActionCoordinator(
                     val seconds = result.durationMillis / 1000.0
                     statsRepository.recordEvent("Audio extracted (~%.1fs, %d samples) to Android/data/.../files/ExtractedAudio/%s".format(seconds, result.sampleCount, fileName))
                     diagnosticLog.log("TIKTOK/EXTRACT", "success -> ${outputFile.absolutePath} (${outputFile.length()} bytes, ${result.sampleCount} samples, ~${seconds}s) - compare this duration against the source video's actual length to judge whether it's complete")
+                    toast("Audio saved (~%.1fs) to ExtractedAudio/%s".format(seconds, fileName))
                 } else {
                     outputFile.delete()
                     statsRepository.recordEvent("Audio extraction failed - the video may not have an audio track TikTok saved, or wasn't downloaded")
                     val error = extractionError
-                    if (error != null) {
-                        diagnosticLog.logError("TIKTOK/EXTRACT", "failed for $uri", error)
-                    } else if (result.hadAudioTrack) {
-                        diagnosticLog.log("TIKTOK/EXTRACT", "failed for $uri - an audio track was found but zero samples could be read from it")
-                    } else {
-                        diagnosticLog.log("TIKTOK/EXTRACT", "failed for $uri - no audio track found in the saved video")
+                    val failureReason = when {
+                        error != null -> {
+                            diagnosticLog.logError("TIKTOK/EXTRACT", "failed for $uri", error)
+                            "an error reading the file"
+                        }
+                        result.hadAudioTrack -> {
+                            diagnosticLog.log("TIKTOK/EXTRACT", "failed for $uri - an audio track was found but zero samples could be read from it")
+                            "its audio track had no readable samples"
+                        }
+                        else -> {
+                            diagnosticLog.log("TIKTOK/EXTRACT", "failed for $uri - no audio track found in the saved video")
+                            "the saved video has no audio track"
+                        }
                     }
+                    toast("Audio extraction failed - $failureReason")
                 }
                 isAudioExtractionInFlight = false
             }

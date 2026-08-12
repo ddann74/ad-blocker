@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import com.adblocker.app.diagnostics.DiagnosticLog
 import com.adblocker.app.diagnostics.GlobalSettings
 import com.adblocker.app.tiktok.filter.FilterEngine
@@ -31,7 +32,7 @@ class TikTokFilterService : AccessibilityService() {
     private lateinit var actionCoordinator: TikTokActionCoordinator
     private lateinit var overlayController: OverlayController
     private var lastSkipMillis: Long = 0L
-    // Every video identity ever auto-skipped this session (see performSkipGesture's call
+    // Every video fingerprint ever auto-skipped this session (see performSkipGesture's call
     // site) - not just the most recent one. A single "last skipped" slot meant scrolling
     // BACKWARD past that one video to an earlier ad/blocked-creator post (one already
     // skipped once before, further back in the feed) looked "new" again and got
@@ -39,12 +40,23 @@ class TikTokFilterService : AccessibilityService() {
     // Tracking the whole set means once a video's been skipped, revisiting it - forward or
     // backward - never re-triggers a skip. Bounded so a long scrolling session can't grow
     // this unboundedly.
-    private val skippedVideoIdentities = LinkedHashSet<String>()
-    // Same "remember the last one" dedup shape as before, but for Subject Boost's auto-like -
-    // without it, a video that lingers on screen across multiple accessibility events
-    // (normal - nothing here forces it to move on) would get an attempted like on every
-    // single one of those events, not just once.
-    private var lastAutoLikedVideoIdentity: String? = null
+    //
+    // Keyed by FilterEngine.videoFingerprint (the video's own full text block), NOT
+    // extractHandle's creator-only identity - a real bug this fixes: using the creator's
+    // name alone as the key meant that once ONE video from a blocked creator was skipped,
+    // every OTHER video from that same creator produced the identical key and was wrongly
+    // treated as "already skipped, leave alone" - silently breaking blocking after the
+    // first skip. A fingerprint that includes the video's own caption/stats, not just the
+    // creator's name, tells different videos from the same creator apart while still
+    // recognizing a genuine revisit to the exact same video.
+    private val skippedVideoFingerprints = LinkedHashSet<String>()
+    // Same dedup shape as above, but for Subject Boost's auto-like - without it, a video
+    // that lingers on screen across multiple accessibility events (normal - nothing here
+    // forces it to move on) would get an attempted like on every single one of those
+    // events, not just once. Also fixed to key on the video fingerprint rather than just
+    // the creator's name, for the identical reason as above - otherwise a second, different
+    // subject-matching video from the same creator would be wrongly skipped for auto-like.
+    private val autoLikedVideoFingerprints = LinkedHashSet<String>()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     // A single reusable Runnable so scheduling it again (or cancelling it) always
@@ -156,25 +168,27 @@ class TikTokFilterService : AccessibilityService() {
             diagnosticLog.log("TIKTOK/FILTER", "${decision.reason} matched \"${decision.detail}\" on a Live stream but live-skip is disabled - texts=$texts")
             return
         }
-        // A best-effort "which video is this" fingerprint - the creator's display name
-        // when one can be found, same identity FilterEngine.extractHandle already relies
-        // on elsewhere. Covers two cases: TikTok is still transitioning out the video we
-        // just skipped (would otherwise read as a "new" duplicate decision), AND the user
-        // has manually scrolled back to a video that was already skipped earlier in this
-        // session - either way, it's already been acted on once and shouldn't be yanked
-        // away again out from under a deliberate scroll-back.
-        val videoIdentity = FilterEngine.extractHandle(texts) ?: texts.firstOrNull()
-        if (videoIdentity != null && videoIdentity in skippedVideoIdentities) {
+        // Identifies the specific video on screen (not just its creator - see
+        // FilterEngine.videoFingerprint's doc for why that distinction matters here).
+        // Covers two cases: TikTok is still transitioning out the video we just skipped
+        // (would otherwise read as a "new" duplicate decision), AND the user has manually
+        // scrolled back to a video that was already skipped earlier in this session -
+        // either way, it's already been acted on once and shouldn't be yanked away again
+        // out from under a deliberate scroll-back. Critically, a DIFFERENT video from the
+        // same blocked creator produces a different fingerprint, so it still gets skipped -
+        // this is what makes blocking an account actually stay in effect past the first hit.
+        val videoFingerprint = FilterEngine.videoFingerprint(texts) ?: texts.firstOrNull()
+        if (videoFingerprint != null && videoFingerprint in skippedVideoFingerprints) {
             diagnosticLog.log("TIKTOK/FILTER", "skip suppressed - this video was already skipped earlier (still transitioning, or you scrolled back to it) - texts=$texts")
             return
         }
         diagnosticLog.log("TIKTOK/FILTER", "${decision.reason} matched \"${decision.detail}\" - live=$isLive - texts=$texts")
 
         lastSkipMillis = now
-        if (videoIdentity != null) {
-            skippedVideoIdentities.add(videoIdentity)
-            if (skippedVideoIdentities.size > MAX_TRACKED_SKIPPED_VIDEOS) {
-                skippedVideoIdentities.remove(skippedVideoIdentities.first())
+        if (videoFingerprint != null) {
+            skippedVideoFingerprints.add(videoFingerprint)
+            if (skippedVideoFingerprints.size > MAX_TRACKED_SKIPPED_VIDEOS) {
+                skippedVideoFingerprints.remove(skippedVideoFingerprints.first())
             }
         }
         statsRepository.recordSkip(decision)
@@ -191,9 +205,14 @@ class TikTokFilterService : AccessibilityService() {
     private fun attemptSubjectBoost(root: AccessibilityNodeInfo, texts: List<String>, isLive: Boolean) {
         if (isLive || !settingsRepository.isSubjectBoostEnabled) return
         if (!FilterEngine.matchesSubject(texts, settingsRepository.subjectKeywords)) return
-        val videoIdentity = FilterEngine.extractHandle(texts) ?: texts.firstOrNull()
-        if (videoIdentity != null && videoIdentity == lastAutoLikedVideoIdentity) return
-        lastAutoLikedVideoIdentity = videoIdentity
+        val videoFingerprint = FilterEngine.videoFingerprint(texts) ?: texts.firstOrNull()
+        if (videoFingerprint != null && videoFingerprint in autoLikedVideoFingerprints) return
+        if (videoFingerprint != null) {
+            autoLikedVideoFingerprints.add(videoFingerprint)
+            if (autoLikedVideoFingerprints.size > MAX_TRACKED_SKIPPED_VIDEOS) {
+                autoLikedVideoFingerprints.remove(autoLikedVideoFingerprints.first())
+            }
+        }
         diagnosticLog.log("TIKTOK/SUBJECT_BOOST", "subject match - attempting auto-like - texts=$texts")
         actionCoordinator.attemptLikeCurrentVideo(root)
     }
@@ -212,6 +231,7 @@ class TikTokFilterService : AccessibilityService() {
         if (root == null) {
             statsRepository.recordEvent("Block tapped but no screen content was available")
             diagnosticLog.log("TIKTOK/OVERLAY", "Block tapped, rootInActiveWindow was null")
+            Toast.makeText(this, "Couldn't read the screen - try tapping Block again", Toast.LENGTH_SHORT).show()
             return
         }
         val texts = mutableListOf<String>()
@@ -223,6 +243,7 @@ class TikTokFilterService : AccessibilityService() {
         if (handle == null) {
             statsRepository.recordEvent("Block tapped but couldn't identify the current creator's handle")
             diagnosticLog.log("TIKTOK/OVERLAY", "Block tapped, no handle found - texts=$texts")
+            Toast.makeText(this, "Couldn't identify this video's creator - try again from directly on the video", Toast.LENGTH_LONG).show()
             return
         }
         val isLive = FilterEngine.isLiveStream(texts, settingsRepository.liveIndicatorKeywords)
@@ -240,6 +261,7 @@ class TikTokFilterService : AccessibilityService() {
         if (root == null) {
             statsRepository.recordEvent("Download tapped but no screen content was available")
             diagnosticLog.log("TIKTOK/OVERLAY", "Download tapped, rootInActiveWindow was null")
+            Toast.makeText(this, "Couldn't read the screen - try tapping Download again", Toast.LENGTH_SHORT).show()
             return
         }
         val texts = mutableListOf<String>()

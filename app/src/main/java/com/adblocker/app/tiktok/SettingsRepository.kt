@@ -227,10 +227,16 @@ class SettingsRepository(context: Context) {
 
         // Best-effort candidate labels for TikTok's own UI - not verified against a live
         // device, editable in Setup. See README for what to do if a tap sequence stalls.
-        val DEFAULT_MORE_OPTIONS_KEYWORDS = listOf("More options", "More", "Share")
-        val DEFAULT_BLOCK_OPTION_KEYWORDS = listOf("Block")
-        val DEFAULT_BLOCK_CONFIRM_KEYWORDS = listOf("Block")
-        val DEFAULT_DOWNLOAD_OPTION_KEYWORDS = listOf("Save video", "Save", "Download")
+        // Broadened from the original single-best-guess lists (see PRD.md / commit
+        // history) after real-world reports that Block/Download appeared to do nothing -
+        // each stage matches ANY keyword in its list (case-insensitive substring against
+        // text or contentDescription), so more candidates only widens the search, it
+        // never narrows what already worked.
+        val DEFAULT_MORE_OPTIONS_KEYWORDS = listOf("More options", "More", "Share", "Options", "...")
+        val DEFAULT_BLOCK_OPTION_KEYWORDS = listOf("Block", "Block account", "Block this account", "Block user")
+        val DEFAULT_BLOCK_CONFIRM_KEYWORDS = listOf("Block", "Yes, block", "Confirm block", "Block account")
+        val DEFAULT_DOWNLOAD_OPTION_KEYWORDS =
+            listOf("Save video", "Save", "Download video", "Download", "Save to device", "Save to Photos")
         // TikTok's like/heart button contentDescription is commonly just "Like" (unliked
         // state) - not verified against a live device, editable in Setup if Subject
         // Boost's auto-like ever stops finding it.

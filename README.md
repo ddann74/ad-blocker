@@ -51,6 +51,14 @@ tend to be consistent per show, the Podcast tab lets you set a skip duration onc
 - **TikTok/Spotify's keyword matching is heuristic**, not an official "is this an ad"
   API - if either app changes its wording, add the new phrase to the relevant keyword
   list in Setup; no rebuild needed.
+- **TikTok's Block/Download buttons now toast their real outcome on every tap** - "Blocked
+  X" always fires immediately (that part is guaranteed, local, and permanent - future
+  videos from that creator get auto-skipped regardless of what follows), but the *also*-block-
+  it-inside-TikTok and Save/Download automations depend on tap-searching for guessed menu
+  button labels (`More options`, `Block`, `Save video`, etc. - see Setup's keyword lists),
+  which are unverified against a real TikTok build and can time out silently if your TikTok's
+  actual wording differs. The toast tells you which happened; if the automation keeps
+  failing, add your TikTok's real button wording to the matching Setup list.
 - **Podcast Addict's skip depends on its MediaSession supporting `ACTION_SEEK_TO`** -
   unverified from this build environment (no way to install/run the app here). If a
   tap reports "seek not supported," Podcast Addict's session doesn't expose that

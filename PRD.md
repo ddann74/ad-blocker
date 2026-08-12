@@ -99,7 +99,7 @@ verification, tracked below.
 - [x] Tabbed `MainActivity` + layouts wiring all three modules + shared Diagnostics tab
 - [x] Unit tests ported (FilterEngine, ActionSequence, AdDetector) + new tests
       (Podcast SettingsRepository duration parsing, PodcastPlaybackBridge outcomes)
-- [ ] README + push to `https://github.com/ddann74/ad-blocker`
+- [x] README + push to `https://github.com/ddann74/ad-blocker`
 
 ## Verification status
 
@@ -110,6 +110,35 @@ Addict skip button against a real Podcast Addict install) needs to happen in And
 Studio on a real device, same as `tiktok-feed-filter` and `spot_block` were. In
 particular, whether Podcast Addict's MediaSession actually supports `ACTION_SEEK_TO`
 is unverified until then — that's the one real open question for the new module.
+
+## Post-launch fixes (from real `assembleDebug` runs and real device use)
+
+- **Resource compile failure**: `podcast_accessibility_service_description` used a
+  backslash-escaped apostrophe (`Android\'s`) — normally valid Android string-resource
+  syntax, but it crashed AGP 8.5.2's resource compiler with "Invalid unicode escape
+  sequence". Fixed by rewording around the apostrophe rather than relying on escaping
+  behavior that isn't consistent across compiler versions. First real evidence this repo
+  had actually been built (`:app:assembleDebug`) since it was written.
+- **TikTok scroll-back bug**: the service re-skipped a video the user manually scrolled
+  back to, because the skip-dedup key was time-based/single-slot. Fixed to track every
+  skipped video's identity for the session instead of just the last one.
+- **Block-permanence bug** (found while fixing the above): the scroll-back fix's dedup
+  key was `FilterEngine.extractHandle()`, which only identifies the *creator*, not the
+  specific video — so once one video from a blocked creator was skipped, every other
+  video from that same creator shared the identical key and was wrongly treated as
+  "already skipped," silently breaking blocking after the first hit. Fixed by adding
+  `FilterEngine.videoFingerprint()` (the video's full own text block: caption, stats,
+  etc., not just the creator's name) as the dedup key instead — the same latent bug also
+  existed in Subject Boost's auto-like dedup and was fixed there too.
+- **Silent Block/Download failures**: neither button gave any on-screen feedback at all -
+  a failed menu-tap automation (guessed button wording not matching the real TikTok
+  build) looked identical to nothing happening. Added a `Toast` at every real outcome
+  (added to blocklist / blocked in TikTok / automation timed out / video saved / audio
+  extracted / extraction failed / live-stream reject / already-in-flight reject), plus
+  broadened the default keyword lists for More Options/Block/Confirm/Download with more
+  plausible real-world label variants. Still unverified against a real TikTok build's
+  actual wording — the toasts make failures visible and point at exactly which Setup
+  keyword list to edit, they don't guarantee success.
 
 ## Ralph loop disclosure
 

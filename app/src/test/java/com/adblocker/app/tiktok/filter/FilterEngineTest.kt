@@ -1,6 +1,7 @@
 package com.adblocker.app.tiktok.filter
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -323,5 +324,42 @@ class FilterEngineTest {
             false,
             FilterEngine.isLiveStream(listOf("@some_creator", "a normal caption", "128 comments"), listOf("LIVE"))
         )
+    }
+
+    @Test
+    fun `videoFingerprint differs for two different videos from the SAME creator`() {
+        // The actual bug this guards against: TikTokFilterService used to dedup skipped
+        // videos by extractHandle() alone, which only identifies the CREATOR - so once
+        // one video from a blocked creator was skipped, every OTHER video from that same
+        // creator produced the identical "already skipped" key and was wrongly left
+        // alone, silently breaking blocking after the first hit. videoFingerprint must
+        // include enough of each video's own text (caption, stats) to tell them apart.
+        val firstVideo = listOf(
+            "Annoying Account profile", "Follow Annoying Account", "Annoying Account",
+            "First caption about cats", "412 likes", "Video"
+        )
+        val secondVideo = listOf(
+            "Annoying Account profile", "Follow Annoying Account", "Annoying Account",
+            "A completely different second caption", "9,001 likes", "Video"
+        )
+        assertNotEquals(FilterEngine.videoFingerprint(firstVideo), FilterEngine.videoFingerprint(secondVideo))
+    }
+
+    @Test
+    fun `videoFingerprint is stable for the exact same video (a genuine revisit)`() {
+        val texts = listOf("Annoying Account profile", "Follow Annoying Account", "a caption", "412 likes")
+        assertEquals(FilterEngine.videoFingerprint(texts), FilterEngine.videoFingerprint(texts))
+    }
+
+    @Test
+    fun `videoFingerprint is scoped to the current video, not a preloaded one`() {
+        val currentOnly = listOf("Current Creator profile", "a caption about cooking pasta", "Video")
+        val currentPlusNext = currentOnly + listOf("Next Creator profile", "a completely unrelated caption")
+        assertEquals(FilterEngine.videoFingerprint(currentOnly), FilterEngine.videoFingerprint(currentPlusNext))
+    }
+
+    @Test
+    fun `videoFingerprint returns null for an empty screen`() {
+        assertNull(FilterEngine.videoFingerprint(emptyList()))
     }
 }
