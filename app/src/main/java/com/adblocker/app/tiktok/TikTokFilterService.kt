@@ -57,6 +57,12 @@ class TikTokFilterService : AccessibilityService() {
     // the creator's name, for the identical reason as above - otherwise a second, different
     // subject-matching video from the same creator would be wrongly skipped for auto-like.
     private val autoLikedVideoFingerprints = LinkedHashSet<String>()
+    // The fingerprint of whichever video [logFilterOncePerVideo] most recently actually
+    // wrote a line for - lets repeated "no match"/"skip suppressed" evaluations of one
+    // unchanged video collapse to a single log entry instead of one per accessibility
+    // event (TikTok fires typeWindowContentChanged far more often than the visible video
+    // actually changes - view counters, etc.). See logFilterOncePerVideo's doc.
+    private var lastLoggedFilterFingerprint: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     // A single reusable Runnable so scheduling it again (or cancelling it) always
@@ -153,6 +159,16 @@ class TikTokFilterService : AccessibilityService() {
         val texts = mutableListOf<String>()
         collectText(root, texts)
 
+        // Computed once, up front, so every log line below about "this video" (no match /
+        // suppressed / live-skip-disabled) can be throttled to once per DISTINCT video
+        // rather than once per accessibility event. Real diagnostic logs showed why this
+        // matters: TikTok fires typeWindowContentChanged repeatedly (view counters, etc.)
+        // even while the user sits on one unchanged video reading its comments - at
+        // ~300ms/event that filled the 512KB log cap with ~380 duplicate lines of the
+        // SAME video in under 2 minutes, twice in a row, trimming away whatever happened
+        // right before the log was pulled - which is exactly the moment worth seeing.
+        val videoFingerprint = FilterEngine.videoFingerprint(texts) ?: texts.firstOrNull()
+
         val isLive = FilterEngine.isLiveStream(texts, settingsRepository.liveIndicatorKeywords)
 
         val decision = FilterEngine.evaluate(
@@ -163,7 +179,7 @@ class TikTokFilterService : AccessibilityService() {
             blockedCreators = settingsRepository.blockedCreators.toSet()
         )
         if (decision == null) {
-            diagnosticLog.log("TIKTOK/FILTER", "no match - live=$isLive - texts=$texts")
+            logFilterOncePerVideo(videoFingerprint, "no match - live=$isLive - texts=$texts")
             // Subject Boost never skips - it only ever adds a positive signal (auto-like)
             // on top of otherwise-normal browsing, so it's only relevant once we already
             // know this video isn't being skipped for an unrelated reason (ad/blocked
@@ -181,23 +197,27 @@ class TikTokFilterService : AccessibilityService() {
         // from one is gated by its own toggle (default on) rather than assuming the
         // same behavior as skipping a video is always wanted here too.
         if (isLive && !settingsRepository.isLiveStreamSkipEnabled) {
-            diagnosticLog.log("TIKTOK/FILTER", "${decision.reason} matched \"${decision.detail}\" on a Live stream but live-skip is disabled - texts=$texts")
+            logFilterOncePerVideo(videoFingerprint, "${decision.reason} matched \"${decision.detail}\" on a Live stream but live-skip is disabled - texts=$texts")
             return
         }
-        // Identifies the specific video on screen (not just its creator - see
-        // FilterEngine.videoFingerprint's doc for why that distinction matters here).
-        // Covers two cases: TikTok is still transitioning out the video we just skipped
-        // (would otherwise read as a "new" duplicate decision), AND the user has manually
-        // scrolled back to a video that was already skipped earlier in this session -
-        // either way, it's already been acted on once and shouldn't be yanked away again
-        // out from under a deliberate scroll-back. Critically, a DIFFERENT video from the
-        // same blocked creator produces a different fingerprint, so it still gets skipped -
-        // this is what makes blocking an account actually stay in effect past the first hit.
-        val videoFingerprint = FilterEngine.videoFingerprint(texts) ?: texts.firstOrNull()
+        // videoFingerprint (computed above) identifies the specific video on screen, not
+        // just its creator - see FilterEngine.videoFingerprint's doc for why that
+        // distinction matters here. Covers two cases: TikTok is still transitioning out
+        // the video we just skipped (would otherwise read as a "new" duplicate decision),
+        // AND the user has manually scrolled back to a video that was already skipped
+        // earlier in this session - either way, it's already been acted on once and
+        // shouldn't be yanked away again out from under a deliberate scroll-back.
+        // Critically, a DIFFERENT video from the same blocked creator produces a different
+        // fingerprint, so it still gets skipped - this is what makes blocking an account
+        // actually stay in effect past the first hit.
         if (videoFingerprint != null && videoFingerprint in skippedVideoFingerprints) {
-            diagnosticLog.log("TIKTOK/FILTER", "skip suppressed - this video was already skipped earlier (still transitioning, or you scrolled back to it) - texts=$texts")
+            logFilterOncePerVideo(videoFingerprint, "skip suppressed - this video was already skipped earlier (still transitioning, or you scrolled back to it) - texts=$texts")
             return
         }
+        // A genuinely new skip decision - always logged (never throttled), since by
+        // definition this only happens once per video anyway (it's added to
+        // skippedVideoFingerprints immediately below, so every later evaluation of this
+        // same video hits the suppressed branch above instead).
         diagnosticLog.log("TIKTOK/FILTER", "${decision.reason} matched \"${decision.detail}\" - live=$isLive - texts=$texts")
 
         lastSkipMillis = now
@@ -209,6 +229,21 @@ class TikTokFilterService : AccessibilityService() {
         }
         statsRepository.recordSkip(decision)
         performSkipGesture()
+    }
+
+    /** Writes [message] only if [fingerprint] differs from whichever video this last
+      * actually logged for - collapses "no match"/"skip suppressed" spam on one
+      * unchanged video down to a single entry instead of one per accessibility event.
+      * Real diagnostic logs showed why this matters: TikTok fires typeWindowContentChanged
+      * far more often than the visible video actually changes, which filled the 512KB
+      * log cap with ~380 duplicate lines of the same video in under two minutes, twice in
+      * a row - trimming away whatever happened right before the log was pulled, which is
+      * exactly the moment worth seeing. A null fingerprint (couldn't build one at all)
+      * always logs, since there's no video identity to dedupe against. */
+    private fun logFilterOncePerVideo(fingerprint: String?, message: String) {
+        if (fingerprint != null && fingerprint == lastLoggedFilterFingerprint) return
+        lastLoggedFilterFingerprint = fingerprint
+        diagnosticLog.log("TIKTOK/FILTER", message)
     }
 
     /** Subject Boost: if enabled and the current video's on-screen text matches a

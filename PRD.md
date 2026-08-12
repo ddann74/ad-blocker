@@ -143,6 +143,20 @@ is unverified until then — that's the one real open question for the new modul
   `rootInActiveWindow` itself actually belongs to. Fixed by also checking
   `root.packageName` and treating a mismatch the same as leaving the app (hide overlay,
   evaluate nothing) - the event's claim alone is no longer trusted on its own.
+- **Diagnostic log self-spam masking the real issue**: two consecutive real diagnostic
+  logs uploaded to investigate a reported "keeps autoscrolling" symptom both turned out
+  to contain ~380 duplicate log lines for a single unchanged video, filling the entire
+  512KB log cap in under 2 minutes and trimming away whatever happened before the log
+  was pulled - the actual triggering moment, both times. Root cause: TikTok fires
+  `typeWindowContentChanged` far more often than the visible video actually changes
+  (view counters, etc.), and every evaluation was logged regardless of whether anything
+  new was found. Fixed by throttling the "no match"/"skip suppressed"/"live-skip
+  disabled" log lines to once per distinct video (keyed on the same
+  `FilterEngine.videoFingerprint` used for skip-dedup) instead of once per accessibility
+  event - a genuinely new skip decision is still always logged. This alone doesn't fix
+  the reported autoscrolling (still unconfirmed/un-root-caused as of this entry - see
+  below) but should let the *next* log capture actually retain enough history to show
+  it, instead of self-evicting it within two minutes.
 - **Silent Block/Download failures**: neither button gave any on-screen feedback at all -
   a failed menu-tap automation (guessed button wording not matching the real TikTok
   build) looked identical to nothing happening. Added a `Toast` at every real outcome
