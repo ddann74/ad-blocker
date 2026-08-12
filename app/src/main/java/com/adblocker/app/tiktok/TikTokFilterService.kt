@@ -11,6 +11,7 @@ import android.widget.Toast
 import com.adblocker.app.diagnostics.DiagnosticLog
 import com.adblocker.app.diagnostics.GlobalSettings
 import com.adblocker.app.tiktok.filter.FilterEngine
+import com.adblocker.app.tiktok.filter.SkipReason
 import com.adblocker.app.tiktok.overlay.OverlayController
 import com.adblocker.app.tiktok.tiktokactions.DownloadMode
 import com.adblocker.app.tiktok.tiktokactions.TikTokActionCoordinator
@@ -228,6 +229,17 @@ class TikTokFilterService : AccessibilityService() {
             }
         }
         statsRepository.recordSkip(decision)
+        // Fires at the exact moment this app dispatches a swipe - the point of this is
+        // attribution, not notification: without it, an unexpected scroll gives no way to
+        // tell "that was this app" from "that was TikTok's own autoplay, another
+        // accessibility-capable app (Tasker/AutoInput/MacroDroid etc. are common), or a
+        // stray touch" without digging through the Activity/Diagnostic logs afterward. A
+        // toast right as it happens removes that guesswork entirely.
+        val skipLabel = when (decision.reason) {
+            SkipReason.AD -> "Skipped ad (\"${decision.detail}\")"
+            SkipReason.BLOCKED_CREATOR -> "Skipped blocked creator (${decision.detail})"
+        }
+        Toast.makeText(this, skipLabel, Toast.LENGTH_SHORT).show()
         performSkipGesture()
     }
 
