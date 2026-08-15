@@ -166,6 +166,19 @@ is unverified until then — that's the one real open question for the new modul
   plausible real-world label variants. Still unverified against a real TikTok build's
   actual wording — the toasts make failures visible and point at exactly which Setup
   keyword list to edit, they don't guarantee success.
+- **Toast attribution didn't work — root cause: Android Toast from a background
+  AccessibilityService is unreliable, not the attribution idea itself.** A user-provided
+  real diagnostic log showed 72 genuine skip decisions dispatched over ~2 hours, but
+  zero toasts were ever seen. Most likely a MIUI-style OEM restriction on background
+  services showing Toasts (a separate, off-by-default permission from the accessibility
+  grant this app already asks for). Fixed by building `TransientBannerOverlay`
+  (`app/src/main/java/.../tiktok/overlay/TransientBannerOverlay.kt`) — a small
+  auto-dismissing text view shown via the same `TYPE_ACCESSIBILITY_OVERLAY` window
+  mechanism already confirmed working on the same device (the Block/Download floating
+  buttons render and are interactive there). All skip/Block/Download feedback -
+  previously `Toast.makeText()` - now routes through this instead, sidestepping the
+  whole class of OEM Toast restriction rather than depending on a system API this app
+  had direct evidence it couldn't trust.
 
 ## Ralph loop disclosure
 

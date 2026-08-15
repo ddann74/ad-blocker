@@ -59,15 +59,22 @@ tend to be consistent per show, the Podcast tab lets you set a skip duration onc
   which are unverified against a real TikTok build and can time out silently if your TikTok's
   actual wording differs. The toast tells you which happened; if the automation keeps
   failing, add your TikTok's real button wording to the matching Setup list.
-- **Every auto-skip (ad/blocked-creator) now toasts the instant it fires**, e.g. "Skipped
-  ad (\"Ad starts in\")". This is for attribution, not notification: if TikTok ever seems
-  to scroll on its own, this toast is the fast way to tell "this app did that" from
+- **Every auto-skip (ad/blocked-creator) shows a banner the instant it fires**, e.g.
+  "Skipped ad (\"Ad starts in\")". This is for attribution, not notification: if TikTok
+  ever seems to scroll on its own, this is the fast way to tell "this app did that" from
   "something else did" (TikTok's own autoplay, or another accessibility-capable app -
   Tasker/AutoInput/MacroDroid-style automation setups can dispatch gestures too, and
-  Android allows more than one accessibility service to run at once). No toast at the
+  Android allows more than one accessibility service to run at once). No banner at the
   moment it happens means it wasn't this app. The TikTok tab's Activity list has the
   same information after the fact, always recording regardless of the Diagnostics
   logging toggle.
+- **These banners use this app's own overlay window, not Android's system Toast.**
+  Real-device evidence showed why: one session logged 72 genuine skip decisions with
+  zero toasts ever seen, most likely a background-service Toast restriction on that
+  OEM (MIUI and similar skins commonly gate this behind a separate, off-by-default
+  permission). Since the Block/Download floating buttons are already confirmed to
+  render on the same device, skip/Block/Download feedback all route through that same
+  proven overlay mechanism instead.
 - **Podcast Addict's skip depends on its MediaSession supporting `ACTION_SEEK_TO`** -
   unverified from this build environment (no way to install/run the app here). If a
   tap reports "seek not supported," Podcast Addict's session doesn't expose that

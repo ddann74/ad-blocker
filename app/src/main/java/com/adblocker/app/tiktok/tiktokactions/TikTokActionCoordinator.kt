@@ -4,12 +4,12 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 import com.adblocker.app.diagnostics.DiagnosticLog
 import com.adblocker.app.tiktok.SettingsRepository
 import com.adblocker.app.tiktok.StatsRepository
 import com.adblocker.app.tiktok.media.AudioExtractor
 import com.adblocker.app.tiktok.media.DownloadedVideoLocator
+import com.adblocker.app.tiktok.overlay.TransientBannerOverlay
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -40,7 +40,8 @@ class TikTokActionCoordinator(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val statsRepository: StatsRepository,
-    private val diagnosticLog: DiagnosticLog
+    private val diagnosticLog: DiagnosticLog,
+    private val bannerOverlay: TransientBannerOverlay
 ) {
     private var pendingBlock: ActionSequence? = null
     // The handle the currently-pending block sequence is for - needed only so the
@@ -216,8 +217,15 @@ class TikTokActionCoordinator(
         )
     }
 
+    /** Routed through [TransientBannerOverlay] rather than Android's Toast API - real
+      * diagnostic evidence showed Toast.makeText() from this background
+      * AccessibilityService was being silently suppressed on at least one real device
+      * (72 real skip decisions, zero visible toasts), most likely an OEM background-toast
+      * restriction. The overlay mechanism is already confirmed working on that same
+      * device (the Block/Download buttons themselves render), so it sidesteps the issue
+      * rather than depending on a system API this app can't fully trust. */
     private fun toast(message: String) {
-        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        bannerOverlay.show(message, durationMillis = 4000L)
     }
 
     private fun advance(

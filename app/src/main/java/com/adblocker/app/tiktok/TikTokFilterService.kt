@@ -7,12 +7,12 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 import com.adblocker.app.diagnostics.DiagnosticLog
 import com.adblocker.app.diagnostics.GlobalSettings
 import com.adblocker.app.tiktok.filter.FilterEngine
 import com.adblocker.app.tiktok.filter.SkipReason
 import com.adblocker.app.tiktok.overlay.OverlayController
+import com.adblocker.app.tiktok.overlay.TransientBannerOverlay
 import com.adblocker.app.tiktok.tiktokactions.DownloadMode
 import com.adblocker.app.tiktok.tiktokactions.TikTokActionCoordinator
 
@@ -32,6 +32,7 @@ class TikTokFilterService : AccessibilityService() {
     private lateinit var diagnosticLog: DiagnosticLog
     private lateinit var actionCoordinator: TikTokActionCoordinator
     private lateinit var overlayController: OverlayController
+    private lateinit var bannerOverlay: TransientBannerOverlay
     private var lastSkipMillis: Long = 0L
     // Every video fingerprint ever auto-skipped this session (see performSkipGesture's call
     // site) - not just the most recent one. A single "last skipped" slot meant scrolling
@@ -76,7 +77,8 @@ class TikTokFilterService : AccessibilityService() {
         statsRepository = StatsRepository(this)
         val globalSettings = GlobalSettings(this)
         diagnosticLog = DiagnosticLog(this) { globalSettings.isDiagnosticLoggingEnabled }
-        actionCoordinator = TikTokActionCoordinator(this, settingsRepository, statsRepository, diagnosticLog)
+        bannerOverlay = TransientBannerOverlay(this)
+        actionCoordinator = TikTokActionCoordinator(this, settingsRepository, statsRepository, diagnosticLog, bannerOverlay)
         overlayController = OverlayController(
             service = this,
             diagnosticLog = diagnosticLog,
@@ -239,7 +241,7 @@ class TikTokFilterService : AccessibilityService() {
             SkipReason.AD -> "Skipped ad (\"${decision.detail}\")"
             SkipReason.BLOCKED_CREATOR -> "Skipped blocked creator (${decision.detail})"
         }
-        Toast.makeText(this, skipLabel, Toast.LENGTH_SHORT).show()
+        bannerOverlay.show(skipLabel)
         performSkipGesture()
     }
 
@@ -294,7 +296,7 @@ class TikTokFilterService : AccessibilityService() {
         if (root == null) {
             statsRepository.recordEvent("Block tapped but no screen content was available")
             diagnosticLog.log("TIKTOK/OVERLAY", "Block tapped, rootInActiveWindow was null")
-            Toast.makeText(this, "Couldn't read the screen - try tapping Block again", Toast.LENGTH_SHORT).show()
+            bannerOverlay.show("Couldn't read the screen - try tapping Block again")
             return
         }
         val texts = mutableListOf<String>()
@@ -306,7 +308,7 @@ class TikTokFilterService : AccessibilityService() {
         if (handle == null) {
             statsRepository.recordEvent("Block tapped but couldn't identify the current creator's handle")
             diagnosticLog.log("TIKTOK/OVERLAY", "Block tapped, no handle found - texts=$texts")
-            Toast.makeText(this, "Couldn't identify this video's creator - try again from directly on the video", Toast.LENGTH_LONG).show()
+            bannerOverlay.show("Couldn't identify this video's creator - try again from directly on the video")
             return
         }
         val isLive = FilterEngine.isLiveStream(texts, settingsRepository.liveIndicatorKeywords)
@@ -324,7 +326,7 @@ class TikTokFilterService : AccessibilityService() {
         if (root == null) {
             statsRepository.recordEvent("Download tapped but no screen content was available")
             diagnosticLog.log("TIKTOK/OVERLAY", "Download tapped, rootInActiveWindow was null")
-            Toast.makeText(this, "Couldn't read the screen - try tapping Download again", Toast.LENGTH_SHORT).show()
+            bannerOverlay.show("Couldn't read the screen - try tapping Download again")
             return
         }
         val texts = mutableListOf<String>()
