@@ -208,6 +208,44 @@ is unverified until then — that's the one real open question for the new modul
   all of those were real, independently-justified fixes, but none of them were what was
   actually causing this specific symptom. This was.
 
+- **"Blocking the previous post" — root cause: `videoFingerprint()` was unstable near
+  the boundary to the next preloaded video, causing repeated re-skip of one static
+  video.** A real diagnostic log (`bcb76ea7-diagnostics9.log`) showed three genuine
+  `BLOCKED_CREATOR` skip dispatches (10:48:42.742, 10:48:48.581, 10:48:56.094) for a
+  single, verifiably unchanged, still-playing "Red Rock Deli" video - identical
+  caption, identical 604-like/1-comment/4-share counts - with "skip suppressed"
+  correctly firing once in between before mysteriously "forgetting" the video was
+  already skipped. Byte-length comparison (1293/1312/1323 bytes) and a character-level
+  diff of the three raw screen reads proved they weren't actually identical: trailing
+  text right before the boundary to the next preloaded video varied between reads of
+  the same static video (e.g. "No, no, Tony, no." vs "No, no, Tony, don't do that.").
+  `videoFingerprint()` was hashing that entire boundary-adjacent block, so each read
+  looked like a "new" video and re-dispatched a real skip gesture - landing while the
+  user's attention had already moved on, this could effectively skip a different video
+  than the one they were looking at, which is what "blocking the previous post" was.
+  Fix: truncate the fingerprinted block at TikTok's `"…more"` truncated-caption marker
+  (byte-verified as U+2026 + "more", consistently present across every real log
+  captured this session) instead of using the full next-video-boundary-scoped block -
+  keeps everything that actually distinguishes one video from another (creator, stats,
+  caption) while dropping the unstable tail. Falls back to the full block when a
+  caption is short enough that TikTok never truncates it - a known, disclosed
+  remaining gap, not a silent one. Two new regression tests lock this in: one modeling
+  the real Red Rock Deli scenario directly, one confirming two different videos that
+  both have truncated captions still produce different fingerprints.
+
+  **Separately surfaced by the same log, not yet acted on:** the real "block in
+  TikTok" automation (opening "More options" then tapping "Block") has never once
+  completed successfully across any log captured so far - this log alone shows 333
+  stage-1 "Block" search attempts and 0 successes (17 timeouts, the rest presumably
+  still mid-search when the log was captured or superseded by a newer attempt). The
+  local blocklist (used for the fingerprint-dedup skip behavior) is unaffected and
+  100% reliable - every one of this log's 27 block-button taps correctly reached it -
+  but the "really block them in TikTok itself" half of the feature is currently not
+  achieving anything on this device's TikTok build, regardless of keyword tuning done
+  so far. Needs a follow-up diagnostic log focused specifically on what the real
+  "More options" menu contains once opened, to find the actual wording this build
+  uses.
+
 ## Ralph loop disclosure
 
 No autonomous loop mechanism was actually invoked for this PRD — every checklist item
