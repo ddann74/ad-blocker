@@ -198,6 +198,16 @@ is unverified until then — that's the one real open question for the new modul
   must NOT match inside an unrelated word, and MUST still match when it genuinely
   appears as its own word.
 
+  **Confirmed fixed on the real affected device**, not just reasoned through: after
+  removing `"Ad"` from Setup's Ad Keywords list, the user confirmed no more
+  autoscrolling, including in the comments section specifically (where it had been
+  worst). This closes out the "keeps autoscrolling" thread that spanned several
+  sessions and several earlier, evidence-based-but-ultimately-not-root-cause fixes
+  (the scroll-back dedup, the block-permanence fingerprint fix, the overlay/launcher
+  package cross-check, log-spam throttling, and the Toast-to-overlay-banner switch) -
+  all of those were real, independently-justified fixes, but none of them were what was
+  actually causing this specific symptom. This was.
+
 ## Ralph loop disclosure
 
 No autonomous loop mechanism was actually invoked for this PRD — every checklist item
