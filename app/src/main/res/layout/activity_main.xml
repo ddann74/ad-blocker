@@ -145,7 +145,7 @@
         <LinearLayout android:id="@+id/tiktokBlockedCreatorsContainer" style="@style/ItemsContainer" />
 
         <TextView style="@style/SectionHeader" android:text="Ad Keywords" />
-        <TextView style="@style/HelperText" android:text="Matched against any on-screen text, case-insensitive." />
+        <TextView style="@style/HelperText" android:text="Matched as a whole word against any on-screen text, case-insensitive - e.g. &quot;Ad&quot; matches the standalone word &quot;Ad&quot;, but not the &quot;Ad&quot; inside &quot;Add to Favourites&quot;. Short keywords are fine." />
         <LinearLayout style="@style/InputRow">
             <EditText android:id="@+id/tiktokAdKeywordInput" style="@style/RowInput" android:hint="Sponsored" />
             <Button android:id="@+id/tiktokAddAdKeywordButton" style="@style/AddButton" />

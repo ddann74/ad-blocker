@@ -179,6 +179,24 @@ is unverified until then — that's the one real open question for the new modul
   previously `Toast.makeText()` - now routes through this instead, sidestepping the
   whole class of OEM Toast restriction rather than depending on a system API this app
   had direct evidence it couldn't trust.
+- **Root cause of the reported "autoscrolling" finally confirmed, not guessed: `"Ad"`
+  matched as a substring inside `"Add"`.** A real diagnostic log showed 56 genuine skip
+  decisions in under 8 minutes, spanning completely unrelated creators/videos, every
+  single one matching the keyword `"Ad"`. Every TikTok video's on-screen text includes
+  the boilerplate UI element "Add or remove this video from Favourites" - a plain
+  case-insensitive substring search meant `"Ad"` matched inside `"Ad"d` there, so the
+  app was skipping nearly every video, near-instantly, regardless of content.
+  Immediate fix for the user: remove `"Ad"` from Setup's Ad Keywords list. Structural
+  fix - first attempt was wrong, corrected before shipping: initially added a minimum
+  keyword length, but the user pointed out this would also block a genuinely short,
+  legitimate keyword (TikTok may well render a bare "Ad" badge on real sponsored
+  content) - the actual problem was never length, it was substring-inside-a-word
+  matching. Reverted the length gate and instead changed `FilterEngine.evaluate()`'s ad-
+  keyword check (and `matchesSubject()`, same underlying issue) from `String.contains()`
+  to a word-boundary regex match (`\bkeyword\b`) - "Ad" now matches the standalone word
+  "Ad" but not the "Ad" inside "Add". New tests lock in both directions: a short keyword
+  must NOT match inside an unrelated word, and MUST still match when it genuinely
+  appears as its own word.
 
 ## Ralph loop disclosure
 

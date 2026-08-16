@@ -362,4 +362,60 @@ class FilterEngineTest {
     fun `videoFingerprint returns null for an empty screen`() {
         assertNull(FilterEngine.videoFingerprint(emptyList()))
     }
+
+    @Test
+    fun `a short ad keyword does NOT match as a substring inside an unrelated word`() {
+        // Reproduces a real, confirmed bug: a user-configured ad keyword of "Ad" matched
+        // inside "Add or remove this video from Favourites" - present on literally every
+        // TikTok video - so nearly every video got skipped regardless of content. Real
+        // diagnostic log: 56 skip decisions in under 8 minutes, all "matched \"Ad\"",
+        // spanning completely unrelated creators.
+        val decision = FilterEngine.evaluate(
+            screenTexts = listOf(
+                "Some Creator profile", "Follow Some Creator", "a normal caption",
+                "Add or remove this video from Favourites."
+            ),
+            adKeywordsEnabled = true,
+            adKeywords = listOf("Ad"),
+            blockedCreatorsEnabled = false,
+            blockedCreators = emptySet()
+        )
+        assertNull(decision)
+    }
+
+    @Test
+    fun `a short ad keyword DOES match when it genuinely appears as its own standalone word`() {
+        // The fix must not simply forbid short keywords - a short keyword is a completely
+        // legitimate thing to want if TikTok genuinely renders a bare "Ad" badge on real
+        // sponsored content. Only the "matches inside another word" case is wrong.
+        val decision = FilterEngine.evaluate(
+            screenTexts = listOf("Some Creator profile", "Follow Some Creator", "Sponsored content", "Ad"),
+            adKeywordsEnabled = true,
+            adKeywords = listOf("Ad"),
+            blockedCreatorsEnabled = false,
+            blockedCreators = emptySet()
+        )
+        assertEquals(SkipReason.AD, decision?.reason)
+        assertEquals("Ad", decision?.detail)
+    }
+
+    @Test
+    fun `matchesSubject does not match a subject as a substring inside an unrelated word`() {
+        // Same whole-word fix applied to Subject Boost's matching - "art" should not
+        // match inside "start" or "party".
+        val matches = FilterEngine.matchesSubject(
+            screenTexts = listOf("Some Creator profile", "the show will start soon at the party"),
+            subjectKeywords = listOf("art")
+        )
+        assertEquals(false, matches)
+    }
+
+    @Test
+    fun `matchesSubject still matches a subject when it appears as its own word`() {
+        val matches = FilterEngine.matchesSubject(
+            screenTexts = listOf("Some Creator profile", "a caption about modern art"),
+            subjectKeywords = listOf("art")
+        )
+        assertEquals(true, matches)
+    }
 }

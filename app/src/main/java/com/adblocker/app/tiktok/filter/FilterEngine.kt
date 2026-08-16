@@ -68,13 +68,29 @@ object FilterEngine {
         }
         if (adKeywordsEnabled) {
             val matchedKeyword = adKeywords.firstOrNull { keyword ->
-                keyword.isNotBlank() && visibleVideoTexts.any { it.contains(keyword, ignoreCase = true) }
+                keyword.isNotBlank() && visibleVideoTexts.any { matchesAsWholeWord(it, keyword) }
             }
             if (matchedKeyword != null) {
                 return SkipDecision(SkipReason.AD, matchedKeyword)
             }
         }
         return null
+    }
+
+    /** Word-boundary match, not a raw substring match - a real, confirmed bug: a
+      * user-configured ad keyword of "Ad" matched as a plain substring inside "Add or
+      * remove this video from Favourites", a UI element present on literally every
+      * TikTok video, so nearly every video got skipped regardless of content. A short
+      * keyword is a completely legitimate thing to want (e.g. TikTok may genuinely
+      * render a bare "Ad" badge on real sponsored content) - the problem was never
+      * length, it was matching "Ad" *inside* the unrelated word "Add". `\b` requires a
+      * non-word character (or string start/end) on each side, so "Ad" matches the
+      * standalone word "Ad" (or the phrase "Ad starts in") but not the "Ad" that's part
+      * of "Add". */
+    private fun matchesAsWholeWord(text: String, keyword: String): Boolean {
+        val trimmed = keyword.trim()
+        if (trimmed.isEmpty()) return false
+        return Regex("(?i)\\b${Regex.escape(trimmed)}\\b").containsMatchIn(text)
     }
 
     /** Subject Boost's match check: does the current video's own on-screen text mention
@@ -89,8 +105,10 @@ object FilterEngine {
         val meaningfulSubjects = subjectKeywords.filter { it.isNotBlank() }
         if (meaningfulSubjects.isEmpty()) return false
         val visibleVideoTexts = currentVideoTexts(screenTexts)
+        // Whole-word match for the same reason as evaluate()'s ad-keyword check - a
+        // subject like "art" shouldn't match inside "start" or "party".
         return meaningfulSubjects.any { subject ->
-            visibleVideoTexts.any { it.contains(subject, ignoreCase = true) }
+            visibleVideoTexts.any { matchesAsWholeWord(it, subject) }
         }
     }
 
