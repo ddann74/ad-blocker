@@ -418,4 +418,44 @@ class FilterEngineTest {
         )
         assertEquals(true, matches)
     }
+
+    @Test
+    fun `videoFingerprint is stable across reads even when unrelated trailing text near the next video's boundary changes`() {
+        // Reproduces a real, confirmed bug from a real diagnostic log: three genuine skip
+        // dispatches fired for one single, unchanged, still-playing "Red Rock Deli" video
+        // (identical caption and stats every time) because content just before the NEXT
+        // preloaded video's own "profile" node varied between reads - not because the
+        // video itself had changed. The two reads below model exactly that: identical
+        // video content, but different trailing text before the next video's boundary.
+        val readOne = listOf(
+            "Red Rock Deli profile", "Follow Red Rock Deli", "Like video 604 likes",
+            "Read or add comments. 1 comments", "Add or remove this video from Favourites.",
+            "Sound: Promoted Music by ", "Share video 4 shares", "Red Rock Deli",
+            "Awaken your senses with chicken cut by the sweetness of honey…more",
+            "Ad", "Video", "No, no, Tony, no.",
+            "Mago Guillermo Avilés profile", "Follow Mago Guillermo Avilés"
+        )
+        val readTwo = listOf(
+            "Red Rock Deli profile", "Follow Red Rock Deli", "Like video 604 likes",
+            "Read or add comments. 1 comments", "Add or remove this video from Favourites.",
+            "Sound: Promoted Music by ", "Share video 4 shares", "Red Rock Deli",
+            "Awaken your senses with chicken cut by the sweetness of honey…more",
+            "Ad", "Video", "No, no, Tony, don't do that.",
+            "Mago Guillermo Avilés profile", "Follow Mago Guillermo Avilés"
+        )
+        assertEquals(FilterEngine.videoFingerprint(readOne), FilterEngine.videoFingerprint(readTwo))
+    }
+
+    @Test
+    fun `videoFingerprint still differs for two different videos that both have truncated captions`() {
+        val firstVideo = listOf(
+            "Creator A profile", "Follow Creator A", "a caption about cats…more",
+            "leaked trailing content that varies", "Next Creator profile"
+        )
+        val secondVideo = listOf(
+            "Creator A profile", "Follow Creator A", "a completely different caption…more",
+            "different leaked trailing content", "Next Creator profile"
+        )
+        assertNotEquals(FilterEngine.videoFingerprint(firstVideo), FilterEngine.videoFingerprint(secondVideo))
+    }
 }

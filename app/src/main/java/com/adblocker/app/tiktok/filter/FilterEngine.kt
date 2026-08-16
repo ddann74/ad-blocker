@@ -149,15 +149,30 @@ object FilterEngine {
       * every video from the same creator produces the identical extractHandle() result,
       * so after the first video from a blocked creator was skipped, every OTHER video
       * from that same creator was wrongly treated as "already skipped, leave it alone" -
-      * silently breaking blocking after one skip. This instead joins the current video's
-      * entire own text block (handle/name, caption, like/comment counts, etc.) - two
-      * different videos from the same creator have different captions/stats and so get
-      * different fingerprints, while genuinely revisiting the exact same video (scrolling
-      * back to it) still reads the same text and produces the same fingerprint. */
+      * silently breaking blocking after one skip.
+      *
+      * This joins the current video's own text block (handle/name, caption, stats,
+      * etc.) - but truncated at the video's own caption, not the full block up to the
+      * next preloaded video's boundary. A real diagnostic log caught why that truncation
+      * matters: content near that boundary (right before the next video's own "profile"
+      * node) varied between reads of the exact SAME still-playing, unchanged video -
+      * three real skip dispatches fired for one static "Red Rock Deli" video (identical
+      * caption, identical 604-like/1-comment/4-share counts) because the trailing text
+      * kept changing underneath it, each time making the fingerprint look "new" and
+      * re-triggering a real swipe gesture - which, landing while the user was doing
+      * something else entirely (reading comments, or just watching), could skip a
+      * completely different, innocent video instead. Cutting at "…more" - TikTok's
+      * truncated-caption marker, consistently present across every real log captured -
+      * keeps everything that actually distinguishes one video from another (creator,
+      * stats, caption) while dropping the unstable tail. Falls back to the full block
+      * for the (less common) case of a caption short enough that TikTok never truncates
+      * it, same as before this fix - a known, disclosed remaining gap, not a silent one. */
     fun videoFingerprint(screenTexts: List<String>): String? {
         val visibleVideoTexts = currentVideoTexts(screenTexts)
         if (visibleVideoTexts.isEmpty()) return null
-        return visibleVideoTexts.joinToString("|")
+        val captionEndIndex = visibleVideoTexts.indexOfFirst { it.contains("…more") }
+        val stableSlice = if (captionEndIndex >= 0) visibleVideoTexts.subList(0, captionEndIndex + 1) else visibleVideoTexts
+        return stableSlice.joinToString("|")
     }
 
     /** Whether the current screen looks like a TikTok Live room rather than a normal
